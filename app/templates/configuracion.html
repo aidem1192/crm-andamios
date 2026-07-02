@@ -1,0 +1,626 @@
+{% extends "base.html" %}
+{% block title %}Configuración{% endblock %}
+{% block content %}
+<div x-data="configPage()" x-init="init()" x-cloak>
+
+  <div class="mb-5 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-gray-800">Configuración</h1>
+      <p class="text-gray-400 text-sm">Empresa, usuarios, pagos y bitácora</p>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex gap-1 mb-5 border-b border-gray-200">
+    <template x-for="t in tabs" :key="t.key">
+      <button @click="tab = t.key"
+              class="px-4 py-2 text-sm font-medium border-b-2 transition -mb-px"
+              :class="tab === t.key
+                ? 'border-orange-500 text-orange-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'"
+              x-text="t.label"></button>
+    </template>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       TAB 1 — EMPRESA
+  ══════════════════════════════════════════════════════════════ -->
+  <div x-show="tab === 'empresa'">
+    <!-- Aviso solo lectura para operadores -->
+    <div x-show="!esAdmin" class="mb-4 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-700">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+      Solo el administrador puede modificar estos datos.
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl">
+
+      <!-- Logo -->
+      <div class="card flex flex-col items-center gap-3">
+        <div class="w-28 h-28 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
+          <img x-show="empresa.logo_path" :src="'/static/' + empresa.logo_path" alt="Logo"
+               class="w-full h-full object-contain p-1">
+          <span x-show="!empresa.logo_path" class="text-gray-300 text-4xl">🏗️</span>
+        </div>
+        <template x-if="esAdmin">
+          <label class="cursor-pointer btn-secondary text-xs w-full text-center">
+            Subir logo
+            <input type="file" accept=".png,.jpg,.jpeg,.svg,.webp" class="hidden"
+                   @change="subirLogo($event)">
+          </label>
+        </template>
+        <p class="text-xs text-gray-400 text-center">PNG, JPG o SVG<br>recomendado 200×200 px</p>
+        <div x-show="logoMsg" class="text-xs text-green-600" x-text="logoMsg"></div>
+      </div>
+
+      <!-- Datos empresa -->
+      <div class="card md:col-span-2 space-y-3 text-sm">
+        <h3 class="font-semibold text-gray-700 mb-1">Datos de la empresa</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="label">Razón social *</label>
+            <input type="text" class="input" x-model="empresa.nombre" :disabled="!esAdmin"
+                   :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+          <div>
+            <label class="label">RFC</label>
+            <input type="text" class="input" x-model="empresa.rfc" placeholder="XXXX000000XXX"
+                   :disabled="!esAdmin" :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label">Domicilio fiscal</label>
+            <input type="text" class="input" x-model="empresa.domicilio" :disabled="!esAdmin"
+                   :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+          <div>
+            <label class="label">Teléfono</label>
+            <input type="text" class="input" x-model="empresa.telefono" :disabled="!esAdmin"
+                   :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+          <div>
+            <label class="label">Email</label>
+            <input type="email" class="input" x-model="empresa.email" :disabled="!esAdmin"
+                   :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+          <div>
+            <label class="label">Sitio web</label>
+            <input type="text" class="input" x-model="empresa.sitio_web" placeholder="https://..."
+                   :disabled="!esAdmin" :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+          <div>
+            <label class="label">Representante legal</label>
+            <input type="text" class="input" x-model="empresa.representante_legal" :disabled="!esAdmin"
+                   :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label">Slogan</label>
+            <input type="text" class="input" x-model="empresa.slogan" placeholder="Frase de la empresa"
+                   :disabled="!esAdmin" :class="!esAdmin && 'bg-gray-50 text-gray-500 cursor-not-allowed'">
+          </div>
+        </div>
+        <div x-show="empresaMsg" :class="empresaError ? 'text-red-600' : 'text-green-600'"
+             class="text-xs" x-text="empresaMsg"></div>
+        <div x-show="esAdmin" class="flex justify-end pt-1">
+          <button @click="guardarEmpresa()" :disabled="empresaGuardando"
+                  class="btn-primary text-sm disabled:opacity-40">
+            <span x-show="!empresaGuardando">Guardar cambios</span>
+            <span x-show="empresaGuardando">Guardando...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       TAB 2 — USUARIOS
+  ══════════════════════════════════════════════════════════════ -->
+  <div x-show="tab === 'usuarios'">
+    <div class="max-w-3xl">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-gray-700">Usuarios del sistema</h2>
+          <button x-show="esAdmin" @click="abrirModalUsuario()" class="btn-primary text-sm">+ Nuevo usuario</button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-gray-500 text-xs border-b border-gray-100">
+                <th class="pb-2 pr-4">Nombre</th>
+                <th class="pb-2 pr-4">Usuario</th>
+                <th class="pb-2 pr-4">Rol</th>
+                <th class="pb-2 pr-4">Estado</th>
+                <th class="pb-2 pr-4">Último acceso</th>
+                <th class="pb-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="u in usuarios" :key="u.id">
+                <tr class="border-b border-gray-50 hover:bg-gray-50">
+                  <td class="py-2 pr-4 font-medium" x-text="u.nombre"></td>
+                  <td class="py-2 pr-4 text-gray-500 font-mono text-xs" x-text="u.username"></td>
+                  <td class="py-2 pr-4">
+                    <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                          :class="u.rol === 'admin' ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-700'"
+                          x-text="u.rol"></span>
+                  </td>
+                  <td class="py-2 pr-4">
+                    <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                          :class="u.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                          x-text="u.activo ? 'Activo' : 'Inactivo'"></span>
+                  </td>
+                  <td class="py-2 pr-4 text-gray-400 text-xs" x-text="u.last_login || '—'"></td>
+                  <td class="py-2">
+                    <div class="flex gap-2">
+                      <button x-show="esAdmin" @click="editarUsuario(u)" class="text-xs text-blue-600 hover:underline">Editar</button>
+                      <!-- Admin puede cambiar cualquier contraseña; operador solo la suya -->
+                      <button x-show="esAdmin || u.id === miId" @click="cambiarPassModal(u)" class="text-xs text-gray-500 hover:underline">Contraseña</button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+              <tr x-show="usuarios.length === 0">
+                <td colspan="6" class="py-6 text-center text-gray-400 text-sm">Sin usuarios registrados</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal crear/editar usuario -->
+    <div x-show="modalU.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div @click.outside="modalU.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-sm p-5">
+        <h3 class="font-semibold text-gray-800 mb-4"
+            x-text="modalU.id ? 'Editar usuario' : 'Nuevo usuario'"></h3>
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="label">Nombre completo *</label>
+            <input type="text" class="input" x-model="modalU.nombre">
+          </div>
+          <div x-show="!modalU.id">
+            <label class="label">Nombre de usuario *</label>
+            <input type="text" class="input" x-model="modalU.username"
+                   autocapitalize="none" placeholder="sin espacios">
+          </div>
+          <div x-show="!modalU.id">
+            <label class="label">Contraseña *</label>
+            <input type="password" class="input" x-model="modalU.password" placeholder="Mínimo 6 caracteres">
+          </div>
+          <div>
+            <label class="label">Rol</label>
+            <select class="input" x-model="modalU.rol">
+              <option value="operador">Operador</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+          <div x-show="modalU.id">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" x-model="modalU.activo" class="w-4 h-4 accent-orange-500">
+              <span>Usuario activo</span>
+            </label>
+          </div>
+          <div x-show="modalU.error" class="text-red-600 text-xs" x-text="modalU.error"></div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button @click="modalU.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+            <button @click="guardarUsuario()" :disabled="modalU.guardando"
+                    class="btn-primary text-sm disabled:opacity-40">
+              <span x-show="!modalU.guardando">Guardar</span>
+              <span x-show="modalU.guardando">...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal cambiar contraseña -->
+    <div x-show="modalPass.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div @click.outside="modalPass.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-sm p-5">
+        <h3 class="font-semibold text-gray-800 mb-1">Cambiar contraseña</h3>
+        <p class="text-gray-500 text-xs mb-4" x-text="'Usuario: ' + modalPass.username"></p>
+        <div class="space-y-3 text-sm">
+          <div x-show="!esAdmin">
+            <label class="label">Contraseña actual</label>
+            <input type="password" class="input" x-model="modalPass.actual">
+          </div>
+          <div>
+            <label class="label">Nueva contraseña *</label>
+            <input type="password" class="input" x-model="modalPass.nueva" placeholder="Mínimo 6 caracteres">
+          </div>
+          <div>
+            <label class="label">Confirmar contraseña *</label>
+            <input type="password" class="input" x-model="modalPass.confirmar">
+          </div>
+          <div x-show="modalPass.error" class="text-red-600 text-xs" x-text="modalPass.error"></div>
+          <div x-show="modalPass.ok" class="text-green-600 text-xs">Contraseña actualizada correctamente.</div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button @click="modalPass.abierto = false" class="btn-secondary text-sm">Cerrar</button>
+            <button @click="guardarPassword()" :disabled="modalPass.guardando"
+                    class="btn-primary text-sm disabled:opacity-40">
+              <span x-show="!modalPass.guardando">Cambiar</span>
+              <span x-show="modalPass.guardando">...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       TAB 3 — MÉTODOS DE PAGO
+  ══════════════════════════════════════════════════════════════ -->
+  <div x-show="tab === 'pagos'">
+    <div class="max-w-2xl">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-gray-700">Métodos de pago</h2>
+          <button @click="abrirModalMetodo()" class="btn-primary text-sm">+ Agregar método</button>
+        </div>
+        <div class="space-y-2">
+          <template x-for="m in metodos" :key="m.id">
+            <div class="flex items-center justify-between p-3 rounded-lg border"
+                 :class="m.activo ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'">
+              <div class="flex items-center gap-3">
+                <button @click="toggleMetodo(m)" class="relative inline-flex h-5 w-9 items-center rounded-full transition"
+                        :class="m.activo ? 'bg-orange-500' : 'bg-gray-300'">
+                  <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition"
+                        :class="m.activo ? 'translate-x-4' : 'translate-x-1'"></span>
+                </button>
+                <div>
+                  <div class="font-semibold text-sm" x-text="m.nombre"></div>
+                  <div class="text-gray-400 text-xs flex gap-2">
+                    <span x-text="m.descripcion || ''"></span>
+                    <span x-show="m.requiere_referencia" class="text-blue-500">· requiere referencia</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button @click="editarMetodo(m)" class="text-xs text-blue-600 hover:underline">Editar</button>
+                <button @click="eliminarMetodo(m)" class="text-xs text-red-500 hover:underline">Eliminar</button>
+              </div>
+            </div>
+          </template>
+          <div x-show="metodos.length === 0" class="text-gray-400 text-sm py-4 text-center">
+            Sin métodos de pago configurados
+          </div>
+        </div>
+        <p class="text-gray-400 text-xs mt-4">
+          Los métodos desactivados no aparecen al registrar pagos.
+        </p>
+      </div>
+    </div>
+
+    <!-- Modal método de pago -->
+    <div x-show="modalM.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div @click.outside="modalM.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-sm p-5">
+        <h3 class="font-semibold text-gray-800 mb-4"
+            x-text="modalM.id ? 'Editar método' : 'Nuevo método de pago'"></h3>
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="label">Nombre *</label>
+            <input type="text" class="input" x-model="modalM.nombre" placeholder="Ej: Efectivo">
+          </div>
+          <div>
+            <label class="label">Descripción</label>
+            <input type="text" class="input" x-model="modalM.descripcion" placeholder="Opcional">
+          </div>
+          <div>
+            <label class="label">Orden en lista</label>
+            <input type="number" min="0" class="input" x-model.number="modalM.orden">
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" x-model="modalM.requiere_referencia" class="w-4 h-4 accent-orange-500">
+            <span>Requiere número de referencia</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" x-model="modalM.activo" class="w-4 h-4 accent-orange-500">
+            <span>Activo</span>
+          </label>
+          <div x-show="modalM.error" class="text-red-600 text-xs" x-text="modalM.error"></div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button @click="modalM.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+            <button @click="guardarMetodo()" :disabled="modalM.guardando"
+                    class="btn-primary text-sm disabled:opacity-40">
+              <span x-show="!modalM.guardando">Guardar</span>
+              <span x-show="modalM.guardando">...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       TAB 4 — BITÁCORA
+  ══════════════════════════════════════════════════════════════ -->
+  <div x-show="tab === 'bitacora'">
+    <div class="max-w-5xl">
+      <div class="card">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <h2 class="font-semibold text-gray-700 flex-1">Bitácora de movimientos</h2>
+          <!-- Filtros -->
+          <input type="text" class="input w-40 text-sm" placeholder="Acción…" x-model="logFiltro.accion"
+                 @input.debounce.400ms="cargarLog()">
+          <select class="input w-36 text-sm" x-model="logFiltro.entidad" @change="cargarLog()">
+            <option value="">Todas las entidades</option>
+            <option value="usuario">Usuario</option>
+            <option value="contrato">Contrato</option>
+            <option value="pago">Pago</option>
+            <option value="config">Configuración</option>
+          </select>
+          <select class="input w-28 text-sm" x-model.number="logFiltro.limite" @change="cargarLog()">
+            <option value="50">50 reg.</option>
+            <option value="100">100 reg.</option>
+            <option value="200">200 reg.</option>
+          </select>
+          <button @click="cargarLog()" class="btn-secondary text-sm">Actualizar</button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-left text-gray-400 border-b border-gray-100">
+                <th class="pb-2 pr-3 font-medium">Fecha</th>
+                <th class="pb-2 pr-3 font-medium">Usuario</th>
+                <th class="pb-2 pr-3 font-medium">Acción</th>
+                <th class="pb-2 pr-3 font-medium">Entidad</th>
+                <th class="pb-2 pr-3 font-medium">Descripción</th>
+                <th class="pb-2 font-medium">IP</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="l in logs" :key="l.id">
+                <tr class="border-b border-gray-50 hover:bg-gray-50">
+                  <td class="py-1.5 pr-3 text-gray-400 whitespace-nowrap" x-text="l.fecha || '—'"></td>
+                  <td class="py-1.5 pr-3 font-medium text-gray-700" x-text="l.usuario"></td>
+                  <td class="py-1.5 pr-3">
+                    <span class="px-1.5 py-0.5 rounded text-xs font-mono"
+                          :class="{
+                            'bg-red-50 text-red-600': l.accion.includes('fallido') || l.accion.includes('eliminar'),
+                            'bg-green-50 text-green-700': l.accion === 'login',
+                            'bg-orange-50 text-orange-700': l.accion.includes('crear') || l.accion.includes('subir'),
+                            'bg-blue-50 text-blue-700': l.accion.includes('editar'),
+                            'bg-gray-100 text-gray-600': true,
+                          }"
+                          x-text="l.accion"></span>
+                  </td>
+                  <td class="py-1.5 pr-3 text-gray-500">
+                    <span x-text="l.entidad || '—'"></span>
+                    <span x-show="l.entidad_id" class="text-gray-300" x-text="' #' + l.entidad_id"></span>
+                  </td>
+                  <td class="py-1.5 pr-3 text-gray-500 max-w-xs truncate" x-text="l.descripcion || '—'"></td>
+                  <td class="py-1.5 text-gray-400 font-mono" x-text="l.ip || '—'"></td>
+                </tr>
+              </template>
+              <tr x-show="logs.length === 0">
+                <td colspan="6" class="py-6 text-center text-gray-400">Sin registros</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray-400 mt-3" x-text="logs.length + ' registros mostrados'"></p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function configPage() {
+  return {
+    tab: 'empresa',
+    tabs: [
+      { key: 'empresa',  label: '🏢 Empresa' },
+      { key: 'usuarios', label: '👤 Usuarios' },
+      { key: 'pagos',    label: '💳 Métodos de pago' },
+      { key: 'bitacora', label: '📋 Bitácora' },
+    ],
+
+    // ── Empresa ──────────────────────────────────────────────────
+    empresa: {},
+    empresaGuardando: false,
+    empresaMsg: '',
+    empresaError: false,
+    logoMsg: '',
+
+    // ── Usuarios ─────────────────────────────────────────────────
+    usuarios: [],
+    esAdmin: false,
+    miId: null,
+    modalU: { abierto: false, id: null, nombre: '', username: '', password: '',
+              rol: 'operador', activo: true, error: '', guardando: false },
+    modalPass: { abierto: false, id: null, username: '', actual: '', nueva: '',
+                 confirmar: '', error: '', ok: false, guardando: false },
+
+    // ── Métodos pago ─────────────────────────────────────────────
+    metodos: [],
+    modalM: { abierto: false, id: null, nombre: '', descripcion: '', orden: 1,
+              requiere_referencia: false, activo: true, error: '', guardando: false },
+
+    // ── Bitácora ──────────────────────────────────────────────────
+    logs: [],
+    logFiltro: { accion: '', entidad: '', limite: 100 },
+
+    async init() {
+      await Promise.all([
+        this.cargarEmpresa(),
+        this.cargarUsuarios(),
+        this.cargarMetodos(),
+        this.cargarLog(),
+      ]);
+      // detectar rol del usuario actual
+      try {
+        const me = await fetch('/api/auth/me').then(r => r.json());
+        this.esAdmin = me.rol === 'admin';
+        this.miId = me.id;
+      } catch(e) {}
+
+      // activar tab desde hash
+      const hash = window.location.hash.replace('#', '');
+      if (['empresa','usuarios','pagos','bitacora'].includes(hash)) this.tab = hash;
+    },
+
+    // ── Empresa ──────────────────────────────────────────────────
+    async cargarEmpresa() {
+      this.empresa = await fetch('/api/config/empresa').then(r => r.json());
+    },
+    async guardarEmpresa() {
+      if (!this.empresa.nombre) { this.empresaMsg = 'La razón social es requerida.'; this.empresaError = true; return; }
+      this.empresaGuardando = true; this.empresaMsg = ''; this.empresaError = false;
+      try {
+        const res = await fetch('/api/config/empresa', {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(this.empresa),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail);
+        this.empresaMsg = 'Guardado correctamente.';
+      } catch(e) {
+        this.empresaMsg = e.message || 'Error al guardar.'; this.empresaError = true;
+      } finally {
+        this.empresaGuardando = false;
+      }
+    },
+    async subirLogo(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch('/api/config/empresa/logo', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail);
+        this.empresa.logo_path = data.logo_path;
+        this.logoMsg = 'Logo actualizado.';
+      } catch(e) {
+        this.logoMsg = e.message || 'Error al subir logo.';
+      }
+    },
+
+    // ── Usuarios ─────────────────────────────────────────────────
+    async cargarUsuarios() {
+      this.usuarios = await fetch('/api/config/usuarios').then(r => r.json());
+    },
+    abrirModalUsuario() {
+      this.modalU = { abierto: true, id: null, nombre: '', username: '', password: '',
+                      rol: 'operador', activo: true, error: '', guardando: false };
+    },
+    editarUsuario(u) {
+      this.modalU = { abierto: true, id: u.id, nombre: u.nombre, username: u.username,
+                      password: '', rol: u.rol, activo: u.activo, error: '', guardando: false };
+    },
+    async guardarUsuario() {
+      if (!this.modalU.nombre) { this.modalU.error = 'El nombre es requerido.'; return; }
+      if (!this.modalU.id && (!this.modalU.username || !this.modalU.password)) {
+        this.modalU.error = 'Usuario y contraseña son requeridos.'; return;
+      }
+      this.modalU.guardando = true; this.modalU.error = '';
+      try {
+        let res;
+        if (this.modalU.id) {
+          res = await fetch('/api/config/usuarios/' + this.modalU.id, {
+            method: 'PUT', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ nombre: this.modalU.nombre, rol: this.modalU.rol, activo: this.modalU.activo }),
+          });
+        } else {
+          res = await fetch('/api/config/usuarios', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ nombre: this.modalU.nombre, username: this.modalU.username,
+                                   password: this.modalU.password, rol: this.modalU.rol }),
+          });
+        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail);
+        this.modalU.abierto = false;
+        await this.cargarUsuarios();
+      } catch(e) {
+        this.modalU.error = e.message || 'Error al guardar.';
+      } finally {
+        this.modalU.guardando = false;
+      }
+    },
+    cambiarPassModal(u) {
+      this.modalPass = { abierto: true, id: u.id, username: u.username,
+                         actual: '', nueva: '', confirmar: '', error: '', ok: false, guardando: false };
+    },
+    async guardarPassword() {
+      if (!this.modalPass.nueva) { this.modalPass.error = 'Ingresa la nueva contraseña.'; return; }
+      if (this.modalPass.nueva !== this.modalPass.confirmar) { this.modalPass.error = 'Las contraseñas no coinciden.'; return; }
+      this.modalPass.guardando = true; this.modalPass.error = ''; this.modalPass.ok = false;
+      try {
+        const res = await fetch('/api/config/usuarios/' + this.modalPass.id + '/cambiar-password', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ password_actual: this.modalPass.actual || null,
+                                 password_nuevo: this.modalPass.nueva }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail);
+        this.modalPass.ok = true;
+        this.modalPass.nueva = ''; this.modalPass.confirmar = ''; this.modalPass.actual = '';
+      } catch(e) {
+        this.modalPass.error = e.message || 'Error al cambiar contraseña.';
+      } finally {
+        this.modalPass.guardando = false;
+      }
+    },
+
+    // ── Métodos pago ─────────────────────────────────────────────
+    async cargarMetodos() {
+      this.metodos = await fetch('/api/metodos-pago?solo_activos=false').then(r => r.json());
+    },
+    abrirModalMetodo() {
+      this.modalM = { abierto: true, id: null, nombre: '', descripcion: '',
+                      orden: this.metodos.length + 1, requiere_referencia: false,
+                      activo: true, error: '', guardando: false };
+    },
+    editarMetodo(m) {
+      this.modalM = { abierto: true, id: m.id, nombre: m.nombre,
+                      descripcion: m.descripcion || '', orden: m.orden,
+                      requiere_referencia: m.requiere_referencia,
+                      activo: m.activo, error: '', guardando: false };
+    },
+    async guardarMetodo() {
+      if (!this.modalM.nombre.trim()) { this.modalM.error = 'El nombre es requerido.'; return; }
+      this.modalM.guardando = true; this.modalM.error = '';
+      const body = { nombre: this.modalM.nombre, descripcion: this.modalM.descripcion,
+                     orden: this.modalM.orden, requiere_referencia: this.modalM.requiere_referencia,
+                     activo: this.modalM.activo };
+      try {
+        const url = this.modalM.id ? '/api/metodos-pago/' + this.modalM.id : '/api/metodos-pago';
+        const method = this.modalM.id ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        this.modalM.abierto = false;
+        await this.cargarMetodos();
+      } catch(e) {
+        this.modalM.error = e.message;
+      } finally {
+        this.modalM.guardando = false;
+      }
+    },
+    async toggleMetodo(m) {
+      const body = { nombre: m.nombre, descripcion: m.descripcion, orden: m.orden,
+                     requiere_referencia: m.requiere_referencia, activo: !m.activo };
+      await fetch('/api/metodos-pago/' + m.id, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      await this.cargarMetodos();
+    },
+    async eliminarMetodo(m) {
+      if (!confirm(`¿Eliminar "${m.nombre}"?`)) return;
+      await fetch('/api/metodos-pago/' + m.id, { method: 'DELETE' });
+      await this.cargarMetodos();
+    },
+
+    // ── Bitácora ──────────────────────────────────────────────────
+    async cargarLog() {
+      const params = new URLSearchParams({ limite: this.logFiltro.limite });
+      if (this.logFiltro.accion)  params.set('accion', this.logFiltro.accion);
+      if (this.logFiltro.entidad) params.set('entidad', this.logFiltro.entidad);
+      this.logs = await fetch('/api/config/auditlog?' + params).then(r => r.json());
+    },
+  };
+}
+</script>
+{% endblock %}

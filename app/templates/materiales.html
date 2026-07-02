@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}Materiales{% endblock %}
+{% block content %}
+<div x-data="materialesPage()" x-init="init()" x-cloak>
+
+  <div class="mb-5 flex items-center justify-between flex-wrap gap-2">
+    <h1 class="text-xl font-bold text-gray-800">Catálogo de materiales</h1>
+    <div class="flex gap-2">
+      <a href="/api/materiales/plantilla-excel" class="btn-secondary text-sm">⬇ Descargar plantilla</a>
+      <button @click="$refs.archivoExcel.click()" class="btn-secondary text-sm">⬆ Importar Excel</button>
+      <input type="file" x-ref="archivoExcel" accept=".xlsx,.xlsm" class="hidden" @change="importarExcel($event)">
+      <button @click="abrirModal()" class="btn-primary text-sm">+ Nuevo material</button>
+    </div>
+  </div>
+
+  <!-- Resultado de importación -->
+  <div x-show="importResult" x-cloak
+       class="mb-4 p-3 rounded-lg text-sm"
+       :class="importResult && importResult.errores && importResult.errores.length ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' : 'bg-green-50 text-green-800 border border-green-200'">
+    <div class="font-semibold" x-show="importResult">
+      <span x-text="importResult ? importResult.importados : 0"></span> de
+      <span x-text="importResult ? importResult.total_filas : 0"></span> materiales importados.
+    </div>
+    <ul class="mt-1 list-disc list-inside text-xs" x-show="importResult && importResult.errores && importResult.errores.length">
+      <template x-for="e in (importResult ? importResult.errores : [])" :key="e">
+        <li x-text="e"></li>
+      </template>
+    </ul>
+    <button @click="importResult = null" class="text-xs underline mt-1">Cerrar</button>
+  </div>
+
+  <div class="card">
+    <input type="text" class="input mb-4" placeholder="Buscar material..."
+           x-model="q" @input.debounce.300ms="buscar()">
+
+    <div x-show="materiales.length === 0" class="text-gray-400 text-center py-8">
+      No hay materiales registrados.
+    </div>
+
+    <div class="overflow-x-auto" x-show="materiales.length > 0">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2 pr-3">Nombre</th>
+            <th class="pb-2 pr-3">Tipo</th>
+            <th class="pb-2 pr-3">Estado</th>
+            <th class="pb-2 pr-3">Ubicación</th>
+            <th class="pb-2 pr-3 text-right">Renta/día</th>
+            <th class="pb-2 pr-3 text-right">Stock</th>
+            <th class="pb-2 pr-3 text-right">Disponible</th>
+            <th class="pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="m in materiales" :key="m.id">
+            <tr class="border-b last:border-0 hover:bg-gray-50">
+              <td class="py-2 pr-3 font-medium" x-text="m.nombre"></td>
+              <td class="py-2 pr-3">
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                      :class="{
+                        'bg-gray-100 text-gray-600': m.tipo === 'pieza',
+                        'bg-blue-50 text-blue-700': m.tipo === 'kit_fijo',
+                        'bg-purple-50 text-purple-700': m.tipo === 'kit_personalizable',
+                      }" x-text="tipoLabel(m.tipo)"></span>
+              </td>
+              <td class="py-2 pr-3">
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="{
+                        'bg-green-100 text-green-700': m.estado === 'bueno',
+                        'bg-red-100 text-red-700': m.estado === 'danado',
+                        'bg-yellow-100 text-yellow-700': m.estado === 'en_reparacion',
+                      }" x-text="m.estado.replace('_',' ')"></span>
+              </td>
+              <td class="py-2 pr-3 text-gray-500 capitalize" x-text="m.ubicacion.replace('_',' ')"></td>
+              <td class="py-2 pr-3 text-right font-semibold text-orange-600"
+                  x-text="'$' + Number(m.precio_renta_dia).toFixed(2)"></td>
+              <!-- Stock solo aplica a piezas -->
+              <td class="py-2 pr-3 text-right text-gray-600">
+                <span x-show="m.tipo === 'pieza'" x-text="m.stock || 0"></span>
+                <span x-show="m.tipo !== 'pieza'" class="text-gray-300">—</span>
+              </td>
+              <!-- Disponible = stock - en_uso (piezas); kits muestran botón de componentes -->
+              <td class="py-2 pr-3 text-right">
+                <template x-if="m.tipo === 'pieza'">
+                  <span :class="m.disponible === 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'"
+                        x-text="m.disponible + ' disp. (' + (m.en_uso||0) + ' uso)'"></span>
+                </template>
+                <template x-if="m.tipo !== 'pieza'">
+                  <button @click="abrirComponentes(m)"
+                          class="text-xs text-purple-600 hover:underline font-medium">
+                    Ver componentes
+                  </button>
+                </template>
+              </td>
+              <td class="py-2 pl-2">
+                <button @click="editar(m)" class="text-xs text-orange-500 hover:underline">Editar</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Modal crear / editar material
+  ══════════════════════════════════════════════════════════ -->
+  <div x-show="modalAbierto" x-cloak
+       class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6" @click.outside="modalAbierto = false">
+      <h2 class="font-bold text-gray-800 mb-4"
+          x-text="editandoId ? 'Editar material' : 'Nuevo material'"></h2>
+      <form @submit.prevent="guardar()" class="space-y-3 text-sm">
+        <div>
+          <label class="label">Nombre *</label>
+          <input type="text" class="input" x-model="form.nombre" required>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label">Tipo</label>
+            <select class="input" x-model="form.tipo">
+              <option value="pieza">Pieza individual</option>
+              <option value="kit_fijo">Kit fijo</option>
+              <option value="kit_personalizable">Kit personalizable</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Estado</label>
+            <select class="input" x-model="form.estado">
+              <option value="bueno">Bueno</option>
+              <option value="danado">Dañado</option>
+              <option value="en_reparacion">En reparación</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Ubicación</label>
+            <select class="input" x-model="form.ubicacion">
+              <option value="bodega">Bodega</option>
+              <option value="en_obra">En obra</option>
+              <option value="en_transito">En tránsito</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">No. serie <span class="text-gray-400 font-normal">(opcional)</span></label>
+            <input type="text" class="input" x-model="form.numero_serie">
+          </div>
+          <div>
+            <label class="label">Precio renta/día *</label>
+            <div class="relative">
+              <span class="absolute left-3 top-2 text-gray-400">$</span>
+              <input type="number" class="input pl-6" x-model.number="form.precio_renta_dia"
+                     step="0.01" min="0" required>
+            </div>
+          </div>
+          <div>
+            <label class="label">Precio venta / reposición</label>
+            <div class="relative">
+              <span class="absolute left-3 top-2 text-gray-400">$</span>
+              <input type="number" class="input pl-6" x-model.number="form.precio_venta"
+                     step="0.01" min="0">
+            </div>
+          </div>
+          <!-- Stock solo para piezas -->
+          <div x-show="form.tipo === 'pieza'" class="col-span-2">
+            <label class="label">Stock total (unidades en posesión)</label>
+            <input type="number" class="input" x-model.number="form.stock" min="0" step="1">
+          </div>
+        </div>
+
+        <div x-show="error" class="text-red-600 text-xs" x-text="error"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" @click="modalAbierto = false" class="btn-secondary">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Modal componentes del kit
+  ══════════════════════════════════════════════════════════ -->
+  <div x-show="modalKit.abierto" x-cloak
+       class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6" @click.outside="modalKit.abierto = false">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="font-bold text-gray-800" x-text="'Componentes: ' + modalKit.nombre"></h2>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Piezas individuales que conforman este kit y su cantidad por unidad de kit.
+          </p>
+        </div>
+      </div>
+
+      <!-- Lista de componentes -->
+      <div class="space-y-2 mb-4 max-h-64 overflow-y-auto">
+        <template x-for="(comp, idx) in modalKit.componentes" :key="idx">
+          <div class="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-100">
+            <div class="flex-1 min-w-0">
+              <select class="input text-sm" x-model.number="comp.pieza_id"
+                      @change="actualizarStockComp(comp)">
+                <option value="">— Seleccionar pieza —</option>
+                <template x-for="p in piezas" :key="p.id">
+                  <option :value="p.id" x-text="p.nombre + ' (stock: ' + (p.stock||0) + ', disp: ' + (p.disponible||0) + ')'"></option>
+                </template>
+              </select>
+            </div>
+            <div class="w-20 flex-shrink-0">
+              <input type="number" class="input text-sm text-center" min="1"
+                     x-model.number="comp.cantidad" placeholder="Cant.">
+            </div>
+            <button @click="modalKit.componentes.splice(idx, 1)"
+                    class="text-red-400 hover:text-red-600 flex-shrink-0 p-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </template>
+        <div x-show="modalKit.componentes.length === 0"
+             class="text-center text-gray-400 text-sm py-4">
+          Sin componentes. Agrega piezas individuales.
+        </div>
+      </div>
+
+      <!-- Resumen impacto inventario -->
+      <div x-show="modalKit.componentes.length > 0"
+           class="mb-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-800 space-y-1">
+        <div class="font-semibold mb-1">Impacto en inventario por cada kit rentado:</div>
+        <template x-for="comp in modalKit.componentes.filter(c => c.pieza_id)" :key="comp.pieza_id">
+          <div class="flex justify-between">
+            <span x-text="nombrePieza(comp.pieza_id)"></span>
+            <span class="font-semibold" x-text="comp.cantidad + ' unid. por kit'"></span>
+          </div>
+        </template>
+      </div>
+
+      <button @click="modalKit.componentes.push({ pieza_id: '', cantidad: 1 })"
+              class="w-full border-2 border-dashed border-gray-200 hover:border-orange-300 text-gray-400
+                     hover:text-orange-500 rounded-lg py-2 text-sm font-medium transition mb-4">
+        + Agregar pieza
+      </button>
+
+      <div x-show="modalKit.error" class="text-red-600 text-xs mb-3" x-text="modalKit.error"></div>
+
+      <div class="flex justify-end gap-2">
+        <button @click="modalKit.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+        <button @click="guardarComponentes()" :disabled="modalKit.guardando"
+                class="btn-primary text-sm disabled:opacity-40">
+          <span x-show="!modalKit.guardando">Guardar componentes</span>
+          <span x-show="modalKit.guardando">Guardando...</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function materialesPage() {
+  return {
+    materiales: [], piezas: [], q: '',
+    modalAbierto: false, editandoId: null, error: '',
+    importResult: null,
+    form: { nombre:'', tipo:'pieza', estado:'bueno', ubicacion:'bodega',
+            numero_serie:'', precio_renta_dia:0, precio_venta:null, stock:0 },
+    modalKit: { abierto: false, kitId: null, nombre: '', componentes: [],
+                error: '', guardando: false },
+
+    async init() {
+      await Promise.all([this.buscar(), this.cargarPiezas()]);
+    },
+
+    async importarExcel(event) {
+      const archivo = event.target.files[0];
+      if (!archivo) return;
+      this.importResult = null;
+      const body = new FormData();
+      body.append('archivo', archivo);
+      try {
+        const res = await fetch('/api/materiales/importar-excel', { method: 'POST', body });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al importar');
+        this.importResult = data;
+        await Promise.all([this.buscar(), this.cargarPiezas()]);
+      } catch(e) {
+        this.importResult = { importados: 0, total_filas: 0, errores: [e.message] };
+      } finally {
+        event.target.value = '';
+      }
+    },
+
+    async buscar() {
+      this.materiales = await fetch('/api/materiales?q=' + encodeURIComponent(this.q)).then(r => r.json());
+    },
+
+    async cargarPiezas() {
+      this.piezas = await fetch('/api/materiales/piezas').then(r => r.json());
+    },
+
+    tipoLabel(tipo) {
+      return { pieza: 'Pieza', kit_fijo: 'Kit fijo', kit_personalizable: 'Kit personalizable' }[tipo] || tipo;
+    },
+
+    abrirModal() {
+      this.editandoId = null; this.error = '';
+      this.form = { nombre:'', tipo:'pieza', estado:'bueno', ubicacion:'bodega',
+                    numero_serie:'', precio_renta_dia:0, precio_venta:null, stock:0 };
+      this.modalAbierto = true;
+    },
+
+    editar(m) {
+      this.editandoId = m.id; this.error = '';
+      this.form = { nombre: m.nombre, tipo: m.tipo, estado: m.estado, ubicacion: m.ubicacion,
+                    numero_serie: m.numero_serie || '', precio_renta_dia: m.precio_renta_dia,
+                    precio_venta: m.precio_venta, stock: m.stock || 0 };
+      this.modalAbierto = true;
+    },
+
+    async guardar() {
+      this.error = '';
+      try {
+        const url = this.editandoId ? '/api/materiales/' + this.editandoId : '/api/materiales';
+        const method = this.editandoId ? 'PUT' : 'POST';
+        const body = { ...this.form };
+        if (body.tipo !== 'pieza') body.stock = 0;
+        const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        this.modalAbierto = false;
+        await Promise.all([this.buscar(), this.cargarPiezas()]);
+      } catch(e) { this.error = e.message; }
+    },
+
+    async abrirComponentes(m) {
+      this.modalKit = { abierto: true, kitId: m.id, nombre: m.nombre,
+                        componentes: [], error: '', guardando: false };
+      try {
+        const comps = await fetch(`/api/materiales/${m.id}/componentes`).then(r => r.json());
+        this.modalKit.componentes = comps.map(c => ({ pieza_id: c.pieza_id, cantidad: c.cantidad }));
+      } catch(e) {
+        this.modalKit.error = 'Error al cargar componentes.';
+      }
+    },
+
+    nombrePieza(pieza_id) {
+      const p = this.piezas.find(p => p.id === pieza_id);
+      return p ? p.nombre : '—';
+    },
+
+    actualizarStockComp(comp) {
+      // solo para reactividad, no hace nada extra
+    },
+
+    async guardarComponentes() {
+      this.modalKit.error = '';
+      // Validar que no haya piezas vacías
+      for (const c of this.modalKit.componentes) {
+        if (!c.pieza_id) { this.modalKit.error = 'Selecciona una pieza en cada fila.'; return; }
+        if (!c.cantidad || c.cantidad < 1) { this.modalKit.error = 'La cantidad debe ser al menos 1.'; return; }
+      }
+      // Verificar duplicados
+      const ids = this.modalKit.componentes.map(c => c.pieza_id);
+      if (new Set(ids).size !== ids.length) { this.modalKit.error = 'Hay piezas duplicadas.'; return; }
+
+      this.modalKit.guardando = true;
+      try {
+        const res = await fetch(`/api/materiales/${this.modalKit.kitId}/componentes`, {
+          method: 'PUT',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(this.modalKit.componentes.map(c => ({ pieza_id: c.pieza_id, cantidad: c.cantidad }))),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        this.modalKit.abierto = false;
+        await this.buscar();
+      } catch(e) {
+        this.modalKit.error = e.message;
+      } finally {
+        this.modalKit.guardando = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

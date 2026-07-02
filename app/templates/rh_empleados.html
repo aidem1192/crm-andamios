@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Empleados{% endblock %}
+{% block content %}
+<div x-data="empleadosPage()" x-init="init()" x-cloak>
+
+  <div class="mb-5 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-gray-800">Recursos Humanos — Empleados</h1>
+      <div class="flex gap-3 mt-1">
+        <a href="/rh/empleados" class="text-sm font-semibold text-orange-600 border-b-2 border-orange-500 pb-0.5">Empleados</a>
+        <a href="/rh/nominas" class="text-sm text-gray-400 hover:text-orange-600">Nóminas</a>
+      </div>
+    </div>
+    <button @click="abrirModal()" class="btn-primary text-sm">+ Nuevo empleado</button>
+  </div>
+
+  <div class="card">
+    <div class="mb-3">
+      <input type="text" class="input max-w-sm" placeholder="Buscar por nombre..."
+             x-model="busqueda" @input.debounce.300="buscar()">
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Nombre</th>
+            <th class="pb-2">Puesto</th>
+            <th class="pb-2">Salario diario</th>
+            <th class="pb-2">Ingreso</th>
+            <th class="pb-2">NSS</th>
+            <th class="pb-2">Estado</th>
+            <th class="pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="e in empleados" :key="e.id">
+            <tr class="border-b last:border-0 hover:bg-gray-50">
+              <td class="py-2 font-semibold" x-text="e.nombre"></td>
+              <td class="py-2 text-gray-500" x-text="e.puesto || '—'"></td>
+              <td class="py-2 font-semibold text-orange-600" x-text="'$' + Number(e.salario_diario).toFixed(2)"></td>
+              <td class="py-2 text-gray-500" x-text="e.fecha_ingreso"></td>
+              <td class="py-2 text-gray-500 text-xs" x-text="e.nss || '—'"></td>
+              <td class="py-2">
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="e.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                      x-text="e.activo ? 'ACTIVO' : 'BAJA'"></span>
+              </td>
+              <td class="py-2 flex gap-2 justify-end">
+                <button @click="editar(e)" class="text-xs text-blue-600 hover:underline">Editar</button>
+                <button @click="darBaja(e)" x-show="e.activo" class="text-xs text-red-500 hover:underline">Dar baja</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="empleados.length === 0">
+            <td colspan="7" class="py-4 text-center text-gray-400 text-sm">Sin empleados registrados</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal empleado -->
+  <div x-show="modal.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div @click.outside="modal.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-xl p-5 max-h-[92vh] overflow-y-auto">
+      <h3 class="font-semibold text-gray-800 mb-4" x-text="modal.id ? 'Editar empleado' : 'Nuevo empleado'"></h3>
+      <div class="space-y-3 text-sm">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="col-span-2">
+            <label class="label">Nombre completo *</label>
+            <input type="text" class="input" x-model="modal.nombre">
+          </div>
+          <div>
+            <label class="label">Puesto</label>
+            <input type="text" class="input" x-model="modal.puesto">
+          </div>
+          <div>
+            <label class="label">Departamento</label>
+            <input type="text" class="input" x-model="modal.departamento">
+          </div>
+          <div>
+            <label class="label">Salario diario ($ MXN) *</label>
+            <input type="number" min="0" step="0.01" class="input" x-model.number="modal.salario_diario">
+          </div>
+          <div>
+            <label class="label">Fecha de ingreso *</label>
+            <input type="date" class="input" x-model="modal.fecha_ingreso">
+          </div>
+          <div>
+            <label class="label">RFC</label>
+            <input type="text" class="input uppercase" x-model="modal.rfc">
+          </div>
+          <div>
+            <label class="label">CURP</label>
+            <input type="text" class="input uppercase" x-model="modal.curp">
+          </div>
+          <div>
+            <label class="label">NSS (Seg. Social)</label>
+            <input type="text" class="input" x-model="modal.nss">
+          </div>
+          <div>
+            <label class="label">Teléfono</label>
+            <input type="text" class="input" x-model="modal.telefono">
+          </div>
+          <div>
+            <label class="label">Banco</label>
+            <input type="text" class="input" x-model="modal.banco">
+          </div>
+          <div>
+            <label class="label">Cuenta bancaria (CLABE)</label>
+            <input type="text" class="input" x-model="modal.cuenta_bancaria">
+          </div>
+          <div class="col-span-2">
+            <label class="label">Observaciones</label>
+            <textarea class="input text-xs" rows="2" x-model="modal.observaciones"></textarea>
+          </div>
+        </div>
+
+        <div x-show="modal.error" class="text-red-600 text-xs" x-text="modal.error"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button @click="modal.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+          <button @click="guardar()" :disabled="modal.guardando" class="btn-primary text-sm disabled:opacity-40">
+            <span x-show="!modal.guardando">Guardar</span>
+            <span x-show="modal.guardando">Guardando...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function empleadosPage() {
+  return {
+    empleados: [],
+    busqueda: '',
+    modal: { abierto: false, id: null, nombre: '', puesto: '', departamento: '',
+             salario_diario: 0, fecha_ingreso: '', rfc: '', curp: '', nss: '',
+             telefono: '', banco: '', cuenta_bancaria: '', observaciones: '',
+             error: '', guardando: false },
+
+    async init() { await this.buscar(); },
+
+    async buscar() {
+      const url = '/api/rh/empleados?activos=false' + (this.busqueda ? '&q=' + encodeURIComponent(this.busqueda) : '');
+      this.empleados = await fetch(url).then(r => r.json());
+    },
+
+    abrirModal() {
+      const hoy = new Date().toISOString().slice(0, 10);
+      this.modal = { abierto: true, id: null, nombre: '', puesto: '', departamento: '',
+                     salario_diario: 250, fecha_ingreso: hoy, rfc: '', curp: '', nss: '',
+                     telefono: '', banco: '', cuenta_bancaria: '', observaciones: '',
+                     error: '', guardando: false };
+    },
+
+    editar(e) {
+      this.modal = { abierto: true, id: e.id, nombre: e.nombre, puesto: e.puesto || '',
+                     departamento: e.departamento || '', salario_diario: e.salario_diario,
+                     fecha_ingreso: e.fecha_ingreso, rfc: e.rfc || '', curp: e.curp || '',
+                     nss: e.nss || '', telefono: e.telefono || '', banco: e.banco || '',
+                     cuenta_bancaria: e.cuenta_bancaria || '', observaciones: e.observaciones || '',
+                     error: '', guardando: false };
+    },
+
+    async guardar() {
+      if (!this.modal.nombre || !this.modal.salario_diario || !this.modal.fecha_ingreso) {
+        this.modal.error = 'Nombre, salario diario y fecha de ingreso son requeridos.';
+        return;
+      }
+      this.modal.guardando = true;
+      this.modal.error = '';
+      const body = {
+        nombre: this.modal.nombre, puesto: this.modal.puesto,
+        departamento: this.modal.departamento, salario_diario: this.modal.salario_diario,
+        fecha_ingreso: this.modal.fecha_ingreso, rfc: this.modal.rfc,
+        curp: this.modal.curp, nss: this.modal.nss, telefono: this.modal.telefono,
+        banco: this.modal.banco, cuenta_bancaria: this.modal.cuenta_bancaria,
+        observaciones: this.modal.observaciones,
+      };
+      try {
+        const url = this.modal.id ? '/api/rh/empleados/' + this.modal.id : '/api/rh/empleados';
+        const method = this.modal.id ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al guardar');
+        this.modal.abierto = false;
+        await this.buscar();
+      } catch(e) {
+        this.modal.error = e.message;
+      } finally {
+        this.modal.guardando = false;
+      }
+    },
+
+    async darBaja(e) {
+      if (!confirm(`¿Dar de baja a ${e.nombre}?`)) return;
+      await fetch('/api/rh/empleados/' + e.id, { method: 'DELETE' });
+      await this.buscar();
+    },
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+{% block title %}Nuevo Contrato{% endblock %}
+{% block content %}
+<div x-data="contratoForm()" x-init="init()" x-cloak>
+
+  <div class="mb-5 flex items-center gap-3">
+    <a href="/" class="text-gray-400 hover:text-gray-600">← Inicio</a>
+    <h1 class="text-xl font-bold text-gray-800">Nuevo contrato de renta</h1>
+  </div>
+
+  <form @submit.prevent="guardar()" class="space-y-5">
+
+    <!-- SECCIÓN 1: CLIENTE -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">1</span>
+        Cliente
+      </h2>
+
+      <!-- Buscador de cliente -->
+      <div class="relative mb-4">
+        <label class="label">Buscar cliente</label>
+        <input type="text" class="input" placeholder="Escribe el nombre del cliente..."
+               x-model="clienteBusqueda"
+               @input.debounce.300ms="buscarClientes()"
+               @focus="clienteDropdownAbierto = clientesSugeridos.length > 0"
+               @keydown.escape="clienteDropdownAbierto = false"
+               autocomplete="off">
+        <div x-show="clienteDropdownAbierto && clientesSugeridos.length > 0"
+             @click.outside="clienteDropdownAbierto = false"
+             class="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg w-full mt-1 max-h-48 overflow-y-auto">
+          <template x-for="c in clientesSugeridos" :key="c.id">
+            <div class="px-4 py-2 hover:bg-orange-50 cursor-pointer text-sm"
+                 @click="seleccionarCliente(c); clienteDropdownAbierto = false">
+              <div class="font-medium" x-text="c.nombre"></div>
+              <div class="text-gray-400 text-xs" x-text="c.telefono || ''"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Cliente seleccionado o nuevo -->
+      <div x-show="!clienteNuevo" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label">Nombre completo *</label>
+          <input type="text" class="input" x-model="form.cliente_nombre" required placeholder="Nombre completo">
+        </div>
+        <div>
+          <label class="label">Teléfono</label>
+          <input type="text" class="input" x-model="form.cliente_telefono" placeholder="614-000-00-00">
+        </div>
+        <div class="sm:col-span-2">
+          <label class="label">Domicilio</label>
+          <input type="text" class="input" x-model="form.cliente_domicilio" placeholder="Calle, número, colonia, CP">
+        </div>
+        <div>
+          <label class="label">RFC <span class="text-gray-400 font-normal">(opcional)</span></label>
+          <input type="text" class="input" x-model="form.cliente_rfc" placeholder="RFC">
+        </div>
+      </div>
+
+      <!-- Referencias -->
+      <div class="mt-4">
+        <div class="flex items-center justify-between mb-2">
+          <label class="label mb-0">Referencias personales</label>
+          <button type="button" @click="agregarReferencia()"
+                  x-show="form.referencias.length < 2"
+                  class="text-sm text-orange-500 hover:text-orange-700">+ Agregar referencia</button>
+        </div>
+        <template x-for="(ref, i) in form.referencias" :key="i">
+          <div class="bg-gray-50 rounded-lg p-3 mb-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="label text-xs">Nombre</label>
+              <input type="text" class="input text-sm" x-model="ref.nombre" placeholder="Nombre">
+            </div>
+            <div>
+              <label class="label text-xs">Teléfono</label>
+              <input type="text" class="input text-sm" x-model="ref.telefono" placeholder="614-...">
+            </div>
+            <div class="relative">
+              <label class="label text-xs">Dirección</label>
+              <div class="flex gap-1">
+                <input type="text" class="input text-sm" x-model="ref.direccion" placeholder="Dirección">
+                <button type="button" @click="form.referencias.splice(i,1)" class="text-red-400 hover:text-red-600 px-1">✕</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- SECCIÓN 2: MATERIALES -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">2</span>
+        Materiales rentados
+      </h2>
+
+      <!-- Tabla de líneas -->
+      <div class="overflow-x-auto mb-3">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-gray-500 border-b text-xs">
+              <th class="pb-2 pr-2">Material</th>
+              <th class="pb-2 pr-2 w-20">Cant.</th>
+              <th class="pb-2 pr-2 w-28">Precio/día</th>
+              <th class="pb-2 pr-2 w-28 text-right">Total diario</th>
+              <th class="pb-2 w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(linea, i) in form.lineas" :key="i">
+              <tr class="border-b last:border-0">
+                <td class="py-1.5 pr-2">
+                  <div class="relative" x-data="{ open: false, q: '' }">
+                    <input type="text" class="input text-sm"
+                           :value="linea.material_nombre"
+                           @input="q = $event.target.value; buscarMateriales(q, i); open = true"
+                           @focus="open = true"
+                           placeholder="Buscar material..."
+                           autocomplete="off">
+                    <div x-show="open && materialesFiltrados.length > 0 && lineaActiva === i"
+                         @click.outside="open = false"
+                         class="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-full mt-1 max-h-40 overflow-y-auto">
+                      <template x-for="m in materialesFiltrados" :key="m.id">
+                        <div class="px-3 py-2 hover:bg-orange-50 cursor-pointer"
+                             @click="seleccionarMaterial(m, i); open = false">
+                          <div class="font-medium text-sm" x-text="m.nombre"></div>
+                          <div class="text-xs text-gray-400" x-text="'$' + m.precio_renta_dia + '/día'"></div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-1.5 pr-2">
+                  <input type="number" class="input text-sm text-center" x-model.number="linea.cantidad"
+                         min="1" @change="calcularTotales()" placeholder="1">
+                </td>
+                <td class="py-1.5 pr-2">
+                  <div class="relative">
+                    <span class="absolute left-3 top-2 text-gray-400">$</span>
+                    <input type="number" class="input text-sm pl-6" x-model.number="linea.precio_unitario"
+                           step="0.01" min="0" @change="calcularTotales()" placeholder="0.00">
+                  </div>
+                </td>
+                <td class="py-1.5 pr-2 text-right font-semibold text-gray-700"
+                    x-text="'$' + (linea.cantidad * linea.precio_unitario).toFixed(2)"></td>
+                <td class="py-1.5">
+                  <button type="button" @click="form.lineas.splice(i,1); calcularTotales()"
+                          class="text-red-400 hover:text-red-600 text-lg leading-none">✕</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <button type="button" @click="agregarLinea()"
+              x-show="form.lineas.length < 9"
+              class="text-sm text-orange-500 hover:text-orange-700 font-medium">
+        + Agregar material
+      </button>
+      <p x-show="form.lineas.length >= 9" class="text-xs text-gray-400">Máximo 9 renglones por contrato.</p>
+    </div>
+
+    <!-- SECCIÓN 3: FECHAS Y VIGENCIA -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">3</span>
+        Vigencia y logística
+      </h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="label">Fecha de inicio *</label>
+          <input type="date" class="input" x-model="form.fecha_inicio" @change="calcularDias()" required>
+        </div>
+        <div>
+          <label class="label">Fecha de terminación *</label>
+          <input type="date" class="input" x-model="form.fecha_fin" @change="calcularDias()" required>
+        </div>
+        <div>
+          <label class="label">Período (días)</label>
+          <input type="text" class="input bg-gray-50 font-semibold" x-model="form.dias" readonly>
+        </div>
+        <div class="sm:col-span-3">
+          <label class="label">Lugar de la obra</label>
+          <input type="text" class="input" x-model="form.lugar_obra" placeholder="Dirección donde estará el material">
+        </div>
+        <div class="sm:col-span-3">
+          <label class="label">Persona(s) autorizadas para recibir material (en ausencia del cliente)</label>
+          <input type="text" class="input" x-model="form.personas_autorizadas" placeholder="Nombre(s)">
+        </div>
+        <div>
+          <label class="label">Lugar de celebración del contrato</label>
+          <input type="text" class="input" x-model="form.lugar_celebracion" placeholder="Andamios y Derivados">
+        </div>
+      </div>
+    </div>
+
+    <!-- SECCIÓN 4: TOTALES Y DESCUENTO -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">4</span>
+        Totales
+      </h2>
+
+      <!-- Descuento -->
+      <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div class="flex items-center gap-3 mb-2">
+          <label class="label mb-0 text-yellow-700">Descuento (%)</label>
+          <input type="number" class="input w-24 text-center" x-model.number="form.descuento_pct"
+                 min="0" max="100" step="0.5" @change="mostrarPinSiDescuento()">
+        </div>
+        <p class="text-xs text-yellow-700">Cualquier descuento requiere autorización del gerente.</p>
+
+        <!-- Modal PIN -->
+        <div x-show="mostrarPin" class="mt-3 flex items-center gap-2">
+          <label class="text-sm font-medium text-yellow-700">PIN del gerente:</label>
+          <input type="password" class="input w-28 text-center tracking-widest" x-model="form.pin_descuento"
+                 maxlength="8" placeholder="••••">
+          <button type="button" @click="verificarPin()"
+                  class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm px-3 py-2 rounded-lg">
+            Autorizar
+          </button>
+          <span x-show="pinVerificado" class="text-green-600 text-sm font-semibold">✓ Autorizado</span>
+          <span x-show="pinError" class="text-red-600 text-sm">PIN incorrecto</span>
+        </div>
+      </div>
+
+      <!-- Resumen de totales -->
+      <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-gray-600">Total diario (sin descuento)</span>
+          <span class="font-semibold" x-text="'$' + totales.total_diario.toFixed(2)"></span>
+        </div>
+        <div class="flex justify-between" x-show="form.descuento_pct > 0">
+          <span class="text-gray-600">Descuento (<span x-text="form.descuento_pct"></span>%)</span>
+          <span class="text-red-500 font-semibold" x-text="'- $' + (totales.total_diario - totales.total_con_descuento).toFixed(2)"></span>
+        </div>
+        <div class="flex justify-between" x-show="form.descuento_pct > 0">
+          <span class="text-gray-600">Total con descuento</span>
+          <span class="font-semibold" x-text="'$' + totales.total_con_descuento.toFixed(2)"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-600">IVA (16%)</span>
+          <span x-text="'$' + totales.iva.toFixed(2)"></span>
+        </div>
+        <div class="flex justify-between border-t pt-2 text-base">
+          <span class="font-bold text-gray-800">Total diario c/IVA</span>
+          <span class="font-bold text-orange-600 text-lg" x-text="'$' + totales.total_con_iva.toFixed(2)"></span>
+        </div>
+        <div class="text-xs text-gray-500 italic" x-text="'Son: ' + totales.importe_letra"></div>
+      </div>
+    </div>
+
+    <!-- Botones -->
+    <div class="flex gap-3 justify-end">
+      <a href="/" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-5 py-2.5 rounded-lg transition">
+        Cancelar
+      </a>
+      <button type="submit"
+              :disabled="guardando || form.lineas.length === 0"
+              class="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg transition flex items-center gap-2">
+        <span x-show="!guardando">Guardar contrato</span>
+        <span x-show="guardando">Guardando...</span>
+      </button>
+    </div>
+
+    <!-- Error -->
+    <div x-show="error" class="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm" x-text="error"></div>
+
+  </form>
+</div>
+
+<script>
+function contratoForm() {
+  return {
+    form: {
+      cliente_id: null,
+      cliente_nombre: '',
+      cliente_telefono: '',
+      cliente_domicilio: '',
+      cliente_rfc: '',
+      referencias: [],
+      lineas: [],
+      fecha_inicio: new Date().toISOString().split('T')[0],
+      fecha_fin: '',
+      dias: '',
+      lugar_obra: '',
+      personas_autorizadas: '',
+      lugar_celebracion: 'ANDAMIOS Y DERIVADOS',
+      descuento_pct: 0,
+      pin_descuento: '',
+    },
+    clienteBusqueda: '',
+    clientesSugeridos: [],
+    clienteDropdownAbierto: false,
+    materialesTodos: [],
+    materialesFiltrados: [],
+    lineaActiva: null,
+    totales: { total_diario: 0, total_con_descuento: 0, iva: 0, total_con_iva: 0, importe_letra: '' },
+    mostrarPin: false,
+    pinVerificado: false,
+    pinError: false,
+    guardando: false,
+    error: '',
+
+    async init() {
+      const mats = await fetch('/api/materiales').then(r => r.json());
+      this.materialesTodos = mats;
+      this.agregarLinea();
+    },
+
+    async buscarClientes() {
+      if (this.clienteBusqueda.length < 2) {
+        this.clientesSugeridos = [];
+        this.clienteDropdownAbierto = false;
+        return;
+      }
+      const res = await fetch('/api/clientes?q=' + encodeURIComponent(this.clienteBusqueda)).then(r => r.json());
+      this.clientesSugeridos = res;
+      this.clienteDropdownAbierto = res.length > 0;
+    },
+
+    seleccionarCliente(c) {
+      this.form.cliente_id = c.id;
+      this.form.cliente_nombre = c.nombre;
+      this.form.cliente_telefono = c.telefono || '';
+      this.form.cliente_domicilio = c.domicilio || '';
+      this.form.cliente_rfc = c.rfc || '';
+      this.form.referencias = (c.referencias || []).map(r => ({
+        nombre: r.nombre || '', telefono: r.telefono || '', direccion: r.direccion || ''
+      }));
+      this.clienteBusqueda = c.nombre;
+      this.clienteDropdownAbierto = false;
+    },
+
+    buscarMateriales(q, idx) {
+      this.lineaActiva = idx;
+      if (!q) { this.materialesFiltrados = this.materialesTodos.slice(0, 10); return; }
+      this.materialesFiltrados = this.materialesTodos.filter(m =>
+        m.nombre.toLowerCase().includes(q.toLowerCase())
+      ).slice(0, 10);
+    },
+
+    seleccionarMaterial(m, i) {
+      this.form.lineas[i].material_id = m.id;
+      this.form.lineas[i].material_nombre = m.nombre;
+      this.form.lineas[i].precio_unitario = m.precio_renta_dia;
+      this.calcularTotales();
+    },
+
+    agregarLinea() {
+      this.form.lineas.push({ material_id: null, material_nombre: '', cantidad: 1, precio_unitario: 0 });
+    },
+
+    agregarReferencia() {
+      if (this.form.referencias.length < 2)
+        this.form.referencias.push({ nombre: '', telefono: '', direccion: '' });
+    },
+
+    calcularDias() {
+      if (this.form.fecha_inicio && this.form.fecha_fin) {
+        const ini = new Date(this.form.fecha_inicio);
+        const fin = new Date(this.form.fecha_fin);
+        const diff = Math.floor((fin - ini) / 86400000) + 1;
+        this.form.dias = diff > 0 ? diff : '';
+      }
+    },
+
+    calcularTotales() {
+      const lineas = this.form.lineas
+        .filter(l => l.material_id && l.cantidad > 0)
+        .map(l => ({ cantidad: l.cantidad, precio_unitario: l.precio_unitario }));
+      const total_diario = lineas.reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
+      const descuento = total_diario * (this.form.descuento_pct / 100);
+      const total_con_descuento = total_diario - descuento;
+      const iva = total_con_descuento * 0.16;
+      const total_con_iva = total_con_descuento + iva;
+      this.totales = { total_diario, total_con_descuento, iva, total_con_iva, importe_letra: '' };
+      // Get importe en letra del servidor
+      if (lineas.length > 0) {
+        fetch('/api/contratos/calcular-totales', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lineas, descuento_pct: this.form.descuento_pct })
+        }).then(r => r.json()).then(d => { this.totales = d; });
+      }
+    },
+
+    mostrarPinSiDescuento() {
+      this.calcularTotales();
+      if (this.form.descuento_pct > 0) {
+        this.mostrarPin = true;
+        this.pinVerificado = false;
+        this.pinError = false;
+      } else {
+        this.mostrarPin = false;
+        this.pinVerificado = false;
+        this.form.pin_descuento = '';
+      }
+    },
+
+    verificarPin() {
+      // Validación real ocurre en el backend; aquí solo indicador visual
+      this.pinError = false;
+      this.pinVerificado = true;
+    },
+
+    async guardar() {
+      this.error = '';
+      if (!this.form.cliente_nombre) { this.error = 'Ingresa el nombre del cliente.'; return; }
+      const lineasValidas = this.form.lineas.filter(l => l.material_id && l.cantidad > 0);
+      if (lineasValidas.length === 0) { this.error = 'Agrega al menos un material.'; return; }
+      if (!this.form.fecha_inicio || !this.form.fecha_fin) { this.error = 'Ingresa las fechas de inicio y fin.'; return; }
+
+      this.guardando = true;
+      try {
+        // Si cliente nuevo, crearlo primero
+        let clienteId = this.form.cliente_id;
+        if (!clienteId) {
+          const clienteRes = await fetch('/api/clientes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nombre: this.form.cliente_nombre,
+              telefono: this.form.cliente_telefono,
+              domicilio: this.form.cliente_domicilio,
+              rfc: this.form.cliente_rfc,
+              referencias: this.form.referencias.filter(r => r.nombre),
+            })
+          });
+          const clienteData = await clienteRes.json();
+          if (!clienteRes.ok) throw new Error(clienteData.detail || 'Error al crear cliente');
+          clienteId = clienteData.id;
+        }
+
+        const body = {
+          cliente_id: clienteId,
+          fecha_inicio: this.form.fecha_inicio,
+          fecha_fin: this.form.fecha_fin,
+          lugar_obra: this.form.lugar_obra,
+          personas_autorizadas: this.form.personas_autorizadas,
+          lugar_celebracion: this.form.lugar_celebracion,
+          descuento_pct: this.form.descuento_pct,
+          pin_descuento: this.form.pin_descuento,
+          lineas: lineasValidas.map(l => ({
+            material_id: l.material_id,
+            cantidad: l.cantidad,
+            precio_unitario: l.precio_unitario,
+          })),
+        };
+
+        const res = await fetch('/api/contratos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al guardar contrato');
+        window.location.href = '/contratos/' + data.id;
+      } catch(e) {
+        this.error = e.message;
+      } finally {
+        this.guardando = false;
+      }
+    }
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Detalle Nómina{% endblock %}
+{% block content %}
+<div x-data="nominaDetalle({{ nomina_id }})" x-init="init()" x-cloak>
+
+  <div class="mb-5 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="/rh/nominas" class="text-gray-400 hover:text-gray-600">← Nóminas</a>
+      <h1 class="text-xl font-bold text-gray-800">
+        Nómina <span class="text-orange-600 font-mono" x-text="n.folio"></span>
+      </h1>
+      <span class="px-3 py-1 rounded-full text-sm font-semibold"
+            :class="{
+              'bg-yellow-100 text-yellow-700': n.estado === 'borrador',
+              'bg-blue-100 text-blue-700': n.estado === 'autorizada',
+              'bg-green-100 text-green-700': n.estado === 'pagada',
+            }"
+            x-text="(n.estado || '').toUpperCase()"></span>
+    </div>
+    <div class="flex gap-2">
+      <button x-show="n.estado === 'borrador'" @click="autorizar()"
+              class="btn-secondary text-sm">Autorizar</button>
+      <button x-show="n.estado === 'autorizada'" @click="pagar()"
+              class="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition text-sm">
+        Marcar como pagada
+      </button>
+    </div>
+  </div>
+
+  <!-- Resumen -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Período</div>
+      <div class="font-semibold text-sm" x-text="n.fecha_inicio + ' → ' + n.fecha_fin"></div>
+      <div class="text-gray-400 text-xs capitalize" x-text="n.tipo_periodo"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Total bruto</div>
+      <div class="text-xl font-bold text-gray-800" x-text="'$' + Number(n.total_bruto || 0).toFixed(2)"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Total deducciones</div>
+      <div class="text-xl font-bold text-red-500" x-text="'$' + Number(n.total_deducciones || 0).toFixed(2)"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Total neto a pagar</div>
+      <div class="text-xl font-bold text-green-600" x-text="'$' + Number(n.total_neto || 0).toFixed(2)"></div>
+    </div>
+  </div>
+
+  <!-- Tabla de empleados -->
+  <div class="card">
+    <h2 class="font-semibold text-gray-700 mb-3">Desglose por empleado</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Empleado</th>
+            <th class="pb-2 text-center">Días trab.</th>
+            <th class="pb-2 text-center">Faltas</th>
+            <th class="pb-2 text-center">H. Extra</th>
+            <th class="pb-2 text-right">Bruto</th>
+            <th class="pb-2 text-right">IMSS</th>
+            <th class="pb-2 text-right">ISR</th>
+            <th class="pb-2 text-right">Bonos</th>
+            <th class="pb-2 text-right">Otros desc.</th>
+            <th class="pb-2 text-right font-semibold text-gray-600">Neto</th>
+            <th class="pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="l in n.lineas" :key="l.id">
+            <tr class="border-b last:border-0 hover:bg-gray-50">
+              <td class="py-2">
+                <div class="font-semibold" x-text="l.empleado_nombre"></div>
+                <div class="text-gray-400 text-xs" x-text="l.empleado_puesto || ''"></div>
+              </td>
+              <td class="py-2 text-center" x-text="l.dias_trabajados"></td>
+              <td class="py-2 text-center" :class="l.dias_falta > 0 ? 'text-red-500 font-semibold' : ''" x-text="l.dias_falta"></td>
+              <td class="py-2 text-center" x-text="l.horas_extra || 0"></td>
+              <td class="py-2 text-right" x-text="'$' + Number(l.salario_bruto).toFixed(2)"></td>
+              <td class="py-2 text-right text-red-400 text-xs" x-text="'$' + Number(l.imss_obrero).toFixed(2)"></td>
+              <td class="py-2 text-right text-red-400 text-xs" x-text="'$' + Number(l.isr).toFixed(2)"></td>
+              <td class="py-2 text-right text-green-600 text-xs" x-text="l.otros_ingresos > 0 ? '+$' + Number(l.otros_ingresos).toFixed(2) : '—'"></td>
+              <td class="py-2 text-right text-red-400 text-xs" x-text="l.otras_deducciones > 0 ? '-$' + Number(l.otras_deducciones).toFixed(2) : '—'"></td>
+              <td class="py-2 text-right font-bold text-green-700" x-text="'$' + Number(l.salario_neto).toFixed(2)"></td>
+              <td class="py-2 text-right">
+                <div class="flex gap-2 justify-end">
+                  <button x-show="n.estado !== 'pagada'" @click="abrirAjuste(l)"
+                          class="text-xs text-blue-600 hover:underline">Ajustar</button>
+                  <a :href="'/api/rh/nominas/' + n.id + '/recibo/' + l.empleado_id"
+                     target="_blank" class="text-xs text-orange-600 hover:underline">⬇ Recibo</a>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal ajuste de línea -->
+  <div x-show="ajuste.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div @click.outside="ajuste.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-sm p-5">
+      <h3 class="font-semibold text-gray-800 mb-1">Ajustar línea</h3>
+      <p class="text-gray-500 text-xs mb-4" x-text="ajuste.nombre"></p>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="label">Bonos / otros ingresos ($)</label>
+          <input type="number" min="0" step="0.01" class="input" x-model.number="ajuste.otros_ingresos">
+        </div>
+        <div>
+          <label class="label">Otras deducciones ($)</label>
+          <input type="number" min="0" step="0.01" class="input" x-model.number="ajuste.otras_deducciones">
+        </div>
+        <div>
+          <label class="label">Observaciones</label>
+          <input type="text" class="input text-xs" x-model="ajuste.observaciones">
+        </div>
+        <div x-show="ajuste.error" class="text-red-600 text-xs" x-text="ajuste.error"></div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button @click="ajuste.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+          <button @click="guardarAjuste()" :disabled="ajuste.guardando" class="btn-primary text-sm disabled:opacity-40">
+            <span x-show="!ajuste.guardando">Guardar</span>
+            <span x-show="ajuste.guardando">...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function nominaDetalle(id) {
+  return {
+    n: {},
+    ajuste: { abierto: false, lineaId: null, nombre: '', otros_ingresos: 0,
+              otras_deducciones: 0, observaciones: '', error: '', guardando: false },
+
+    async init() {
+      this.n = await fetch('/api/rh/nominas/' + id).then(r => r.json());
+    },
+
+    async autorizar() {
+      if (!confirm('¿Autorizar la nómina ' + this.n.folio + '?')) return;
+      const res = await fetch('/api/rh/nominas/' + id + '/autorizar', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) this.n.estado = data.estado;
+      else alert(data.detail);
+    },
+
+    async pagar() {
+      if (!confirm('¿Marcar como PAGADA la nómina ' + this.n.folio + '? Esta acción no se puede deshacer.')) return;
+      const res = await fetch('/api/rh/nominas/' + id + '/pagar', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) this.n.estado = data.estado;
+      else alert(data.detail);
+    },
+
+    abrirAjuste(l) {
+      this.ajuste = {
+        abierto: true, lineaId: l.id, nombre: l.empleado_nombre,
+        otros_ingresos: l.otros_ingresos || 0,
+        otras_deducciones: l.otras_deducciones || 0,
+        observaciones: l.observaciones || '',
+        error: '', guardando: false,
+      };
+    },
+
+    async guardarAjuste() {
+      this.ajuste.guardando = true;
+      this.ajuste.error = '';
+      try {
+        const res = await fetch('/api/rh/nominas/' + id + '/linea/' + this.ajuste.lineaId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            otros_ingresos: this.ajuste.otros_ingresos,
+            otras_deducciones: this.ajuste.otras_deducciones,
+            observaciones: this.ajuste.observaciones,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        this.ajuste.abierto = false;
+        this.n = await fetch('/api/rh/nominas/' + id).then(r => r.json());
+      } catch(e) {
+        this.ajuste.error = e.message;
+      } finally {
+        this.ajuste.guardando = false;
+      }
+    },
+  }
+}
+</script>
+{% endblock %}

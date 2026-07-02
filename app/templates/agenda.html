@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+{% block title %}Agenda{% endblock %}
+{% block content %}
+<div x-data="agendaPage()" x-init="init()" x-cloak>
+
+  <!-- Encabezado -->
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-bold text-gray-800">Agenda</h1>
+      <p class="text-gray-400 text-sm">Entregas, recolecciones, pagos y recordatorios</p>
+    </div>
+    <button @click="abrirModalEvento(null)"
+            class="btn-primary text-sm flex items-center gap-1.5">
+      + Nuevo evento
+    </button>
+  </div>
+
+  <div class="flex flex-col lg:flex-row gap-5">
+
+    <!-- ── Calendario ──────────────────────────────────────── -->
+    <div class="flex-1 min-w-0">
+      <div class="card p-0 overflow-hidden">
+
+        <!-- Navegación mes -->
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+          <button @click="mesAnterior()" class="p-1.5 rounded-lg hover:bg-gray-200 text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <h2 class="font-semibold text-gray-800 text-base" x-text="tituloMes"></h2>
+          <button @click="mesSiguiente()" class="p-1.5 rounded-lg hover:bg-gray-200 text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Días de la semana -->
+        <div class="grid grid-cols-7 border-b border-gray-100">
+          <template x-for="d in ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']">
+            <div class="text-center text-xs font-semibold text-gray-400 py-2" x-text="d"></div>
+          </template>
+        </div>
+
+        <!-- Grilla de días -->
+        <div class="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-gray-100">
+          <template x-for="(dia, idx) in diasDelMes" :key="idx">
+            <div @click="seleccionarDia(dia)"
+                 class="min-h-[80px] p-1.5 cursor-pointer transition relative"
+                 :class="{
+                   'bg-gray-50 opacity-50': !dia.esMes,
+                   'bg-orange-50 ring-2 ring-orange-400 ring-inset': dia.esHoy,
+                   'bg-blue-50': diaSeleccionado === dia.fecha && !dia.esHoy,
+                   'hover:bg-gray-50': dia.esMes && !dia.esHoy,
+                 }">
+              <!-- Número del día -->
+              <div class="text-xs font-semibold mb-1"
+                   :class="dia.esHoy ? 'text-orange-600' : (dia.esMes ? 'text-gray-700' : 'text-gray-300')"
+                   x-text="dia.numero"></div>
+              <!-- Puntos de eventos -->
+              <div class="space-y-0.5">
+                <template x-for="ev in dia.eventos.slice(0, 3)" :key="ev.id">
+                  <div class="text-xs rounded px-1 py-0.5 truncate font-medium leading-tight"
+                       :style="'background:' + ev.color + '22; color:' + ev.color"
+                       :class="ev.completado && 'opacity-40 line-through'"
+                       x-text="ev.titulo"></div>
+                </template>
+                <div x-show="dia.eventos.length > 3"
+                     class="text-xs text-gray-400 pl-1"
+                     x-text="'+' + (dia.eventos.length - 3) + ' más'"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+      </div>
+
+      <!-- Leyenda -->
+      <div class="flex flex-wrap gap-3 mt-3 text-xs text-gray-500">
+        <template x-for="item in leyenda" :key="item.tipo">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + item.color"></span>
+            <span x-text="item.label"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ── Panel lateral: eventos del día seleccionado ─────── -->
+    <div class="lg:w-80 flex-shrink-0">
+      <div class="card sticky top-20">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-gray-700 text-sm"
+              x-text="diaSeleccionado ? formatFechaLarga(diaSeleccionado) : 'Selecciona un día'"></h3>
+          <button x-show="diaSeleccionado" @click="abrirModalEvento(null)"
+                  class="text-xs text-orange-500 hover:underline font-medium">+ Agregar</button>
+        </div>
+
+        <div x-show="!diaSeleccionado" class="text-gray-400 text-sm text-center py-8">
+          Haz clic en un día del calendario
+        </div>
+
+        <div x-show="diaSeleccionado && eventosDia.length === 0"
+             class="text-gray-400 text-sm text-center py-6">
+          Sin eventos para este día
+        </div>
+
+        <div class="space-y-2">
+          <template x-for="ev in eventosDia" :key="ev.id">
+            <div class="rounded-lg p-3 border"
+                 :style="'border-left: 3px solid ' + ev.color"
+                 :class="ev.completado ? 'opacity-50 bg-gray-50' : 'bg-white'">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5 mb-0.5">
+                    <span class="text-xs font-bold uppercase tracking-wide"
+                          :style="'color:' + ev.color" x-text="tipoLabel(ev.tipo)"></span>
+                    <span x-show="ev.hora" class="text-xs text-gray-400" x-text="ev.hora"></span>
+                  </div>
+                  <div class="text-sm font-medium text-gray-800 truncate"
+                       :class="ev.completado && 'line-through'"
+                       x-text="ev.titulo"></div>
+                  <div x-show="ev.descripcion" class="text-xs text-gray-500 mt-0.5 line-clamp-2"
+                       x-text="ev.descripcion"></div>
+                  <a x-show="ev.contrato_id && ev.manual === false"
+                     :href="'/contratos/' + ev.contrato_id"
+                     class="text-xs text-orange-500 hover:underline mt-0.5 inline-block">
+                     Ver contrato →
+                  </a>
+                </div>
+                <!-- Acciones solo para eventos manuales -->
+                <div x-show="ev.manual" class="flex flex-col gap-1 flex-shrink-0">
+                  <button @click="toggleCompletar(ev)"
+                          class="text-xs px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100"
+                          :class="ev.completado ? 'text-gray-400' : 'text-green-600'"
+                          x-text="ev.completado ? 'Reabrír' : '✓'">
+                  </button>
+                  <button @click="abrirModalEvento(ev)"
+                          class="text-xs px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 text-blue-600">
+                    Editar
+                  </button>
+                  <button @click="eliminarEvento(ev)"
+                          class="text-xs px-2 py-0.5 rounded border border-gray-200 hover:bg-red-50 text-red-500">
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       Modal nuevo / editar evento
+  ══════════════════════════════════════════════════════ -->
+  <div x-show="modal.abierto" x-cloak
+       class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div @click.outside="modal.abierto = false"
+         class="bg-white rounded-xl shadow-lg w-full max-w-sm p-5">
+      <h3 class="font-semibold text-gray-800 mb-4"
+          x-text="modal.id ? 'Editar evento' : 'Nuevo evento'"></h3>
+      <div class="space-y-3 text-sm">
+
+        <div>
+          <label class="label">Título *</label>
+          <input type="text" class="input" x-model="modal.titulo" placeholder="Descripción breve">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label">Fecha *</label>
+            <input type="date" class="input" x-model="modal.fecha">
+          </div>
+          <div>
+            <label class="label">Hora (opcional)</label>
+            <input type="time" class="input" x-model="modal.hora">
+          </div>
+        </div>
+
+        <div>
+          <label class="label">Tipo</label>
+          <select class="input" x-model="modal.tipo">
+            <option value="entrega">Entrega</option>
+            <option value="recoleccion">Recolección</option>
+            <option value="pago">Pago esperado</option>
+            <option value="recordatorio">Recordatorio</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="label">Descripción</label>
+          <textarea class="input resize-none" rows="2" x-model="modal.descripcion"
+                    placeholder="Notas adicionales…"></textarea>
+        </div>
+
+        <div x-show="modal.error" class="text-red-600 text-xs" x-text="modal.error"></div>
+
+        <div class="flex justify-end gap-2 pt-1">
+          <button @click="modal.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+          <button @click="guardarEvento()" :disabled="modal.guardando"
+                  class="btn-primary text-sm disabled:opacity-40">
+            <span x-show="!modal.guardando">Guardar</span>
+            <span x-show="modal.guardando">...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DIAS_SEMANA = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+
+const TIPO_LABEL = {
+  entrega: 'Entrega', recoleccion: 'Recolección', vencimiento: 'Vencimiento',
+  pago: 'Pago', recordatorio: 'Recordatorio', otro: 'Otro',
+};
+const TIPO_COLOR = {
+  entrega: '#f97316', recoleccion: '#8b5cf6', vencimiento: '#ef4444',
+  pago: '#10b981', recordatorio: '#3b82f6', otro: '#6b7280',
+};
+
+function agendaPage() {
+  const hoy = new Date();
+  return {
+    anio: hoy.getFullYear(),
+    mes: hoy.getMonth(),       // 0-based
+    eventos: [],
+    diasDelMes: [],
+    diaSeleccionado: null,
+    eventosDia: [],
+    modal: { abierto: false, id: null, titulo: '', fecha: '', hora: '',
+             tipo: 'recordatorio', descripcion: '', error: '', guardando: false },
+    leyenda: Object.entries(TIPO_COLOR).map(([tipo, color]) => ({ tipo, color, label: TIPO_LABEL[tipo] })),
+
+    get tituloMes() {
+      return `${MESES[this.mes]} ${this.anio}`;
+    },
+    get mesStr() {
+      return `${this.anio}-${String(this.mes + 1).padStart(2, '0')}`;
+    },
+
+    async init() {
+      await this.cargar();
+      // Seleccionar hoy si está en el mes actual
+      const strHoy = hoy.toISOString().slice(0, 10);
+      if (this.anio === hoy.getFullYear() && this.mes === hoy.getMonth()) {
+        this.seleccionarDia({ fecha: strHoy, esMes: true });
+      }
+    },
+
+    async cargar() {
+      this.eventos = await fetch(`/api/agenda/eventos?mes=${this.mesStr}`).then(r => r.json());
+      this.construirGrilla();
+      if (this.diaSeleccionado) this.actualizarEventosDia();
+    },
+
+    construirGrilla() {
+      const strHoy = new Date().toISOString().slice(0, 10);
+      const primerDia = new Date(this.anio, this.mes, 1);
+      const ultimoDia = new Date(this.anio, this.mes + 1, 0);
+
+      // Lunes = 0 … Domingo = 6
+      let inicioDow = (primerDia.getDay() + 6) % 7;  // ajuste: JS domingo=0
+      const dias = [];
+
+      // Días del mes anterior para completar
+      for (let i = inicioDow - 1; i >= 0; i--) {
+        const d = new Date(this.anio, this.mes, -i);
+        const fecha = d.toISOString().slice(0, 10);
+        dias.push({ numero: d.getDate(), fecha, esMes: false, esHoy: false, eventos: [] });
+      }
+
+      // Días del mes
+      for (let n = 1; n <= ultimoDia.getDate(); n++) {
+        const d = new Date(this.anio, this.mes, n);
+        const fecha = d.toISOString().slice(0, 10);
+        const evsDia = this.eventos.filter(e => e.fecha === fecha);
+        dias.push({ numero: n, fecha, esMes: true, esHoy: fecha === strHoy, eventos: evsDia });
+      }
+
+      // Días del mes siguiente para completar a múltiplo de 7
+      const restante = (7 - (dias.length % 7)) % 7;
+      for (let i = 1; i <= restante; i++) {
+        const d = new Date(this.anio, this.mes + 1, i);
+        const fecha = d.toISOString().slice(0, 10);
+        dias.push({ numero: d.getDate(), fecha, esMes: false, esHoy: false, eventos: [] });
+      }
+
+      this.diasDelMes = dias;
+    },
+
+    seleccionarDia(dia) {
+      this.diaSeleccionado = dia.fecha;
+      this.actualizarEventosDia();
+    },
+
+    actualizarEventosDia() {
+      this.eventosDia = this.eventos.filter(e => e.fecha === this.diaSeleccionado);
+    },
+
+    mesAnterior() {
+      if (this.mes === 0) { this.mes = 11; this.anio--; }
+      else this.mes--;
+      this.diaSeleccionado = null;
+      this.cargar();
+    },
+
+    mesSiguiente() {
+      if (this.mes === 11) { this.mes = 0; this.anio++; }
+      else this.mes++;
+      this.diaSeleccionado = null;
+      this.cargar();
+    },
+
+    formatFechaLarga(fecha) {
+      const d = new Date(fecha + 'T00:00:00');
+      return `${DIAS_SEMANA[(d.getDay() + 6) % 7]} ${d.getDate()} de ${MESES[d.getMonth()]} ${d.getFullYear()}`;
+    },
+
+    tipoLabel(tipo) { return TIPO_LABEL[tipo] || tipo; },
+
+    abrirModalEvento(ev) {
+      if (ev) {
+        this.modal = { abierto: true, id: ev.id, titulo: ev.titulo, fecha: ev.fecha,
+                       hora: ev.hora || '', tipo: ev.tipo,
+                       descripcion: ev.descripcion || '', error: '', guardando: false };
+      } else {
+        this.modal = { abierto: true, id: null, titulo: '',
+                       fecha: this.diaSeleccionado || new Date().toISOString().slice(0, 10),
+                       hora: '', tipo: 'recordatorio', descripcion: '', error: '', guardando: false };
+      }
+    },
+
+    async guardarEvento() {
+      if (!this.modal.titulo.trim()) { this.modal.error = 'El título es requerido.'; return; }
+      if (!this.modal.fecha) { this.modal.error = 'La fecha es requerida.'; return; }
+      this.modal.guardando = true; this.modal.error = '';
+      const body = { titulo: this.modal.titulo, fecha: this.modal.fecha,
+                     hora: this.modal.hora || null, tipo: this.modal.tipo,
+                     descripcion: this.modal.descripcion || null };
+      try {
+        const url = this.modal.id ? `/api/agenda/eventos/${this.modal.id}` : '/api/agenda/eventos';
+        const method = this.modal.id ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        this.modal.abierto = false;
+
+        // Si la fecha del evento está en el mes visible, recargar
+        const [ay, am] = this.modal.fecha.split('-').map(Number);
+        if (ay === this.anio && am === this.mes + 1) {
+          await this.cargar();
+          this.diaSeleccionado = this.modal.fecha;
+          this.actualizarEventosDia();
+        }
+      } catch(e) {
+        this.modal.error = e.message;
+      } finally {
+        this.modal.guardando = false;
+      }
+    },
+
+    async toggleCompletar(ev) {
+      const res = await fetch(`/api/agenda/eventos/${ev.id}/completar`, { method: 'PATCH' });
+      const data = await res.json();
+      ev.completado = data.completado;
+      // actualizar también en grilla
+      const enGrilla = this.diasDelMes.find(d => d.fecha === ev.fecha);
+      if (enGrilla) {
+        const idx = enGrilla.eventos.findIndex(e => e.id === ev.id);
+        if (idx >= 0) enGrilla.eventos[idx].completado = data.completado;
+      }
+    },
+
+    async eliminarEvento(ev) {
+      if (!confirm(`¿Eliminar "${ev.titulo}"?`)) return;
+      await fetch(`/api/agenda/eventos/${ev.id}`, { method: 'DELETE' });
+      await this.cargar();
+      this.actualizarEventosDia();
+    },
+  };
+}
+</script>
+{% endblock %}

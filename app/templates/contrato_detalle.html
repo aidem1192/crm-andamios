@@ -1,0 +1,701 @@
+{% extends "base.html" %}
+{% block title %}Contrato{% endblock %}
+{% block content %}
+<div x-data="contratoDetalle({{ contrato_id }})" x-init="init()" x-cloak>
+
+  <div class="mb-5 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="/" class="text-gray-400 hover:text-gray-600">← Inicio</a>
+      <h1 class="text-xl font-bold text-gray-800">Contrato <span class="text-orange-600 font-mono" x-text="c.folio"></span></h1>
+    </div>
+    <div class="flex gap-2">
+      <a :href="'/api/contratos/' + c.id + '/pdf'"
+         class="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm">
+        ⬇ Descargar contrato (.docx)
+      </a>
+      <button @click="abrirModalCancelar()" x-show="c.estado === 'activo'"
+              class="bg-white border border-red-300 hover:bg-red-50 text-red-600 font-semibold px-4 py-2 rounded-lg transition text-sm">
+        ✕ Cancelar contrato
+      </button>
+    </div>
+  </div>
+
+  <!-- Estado -->
+  <div class="flex items-center gap-3 mb-5">
+    <span class="px-3 py-1 rounded-full text-sm font-semibold"
+          :class="{
+            'bg-green-100 text-green-700': c.estado === 'activo',
+            'bg-red-100 text-red-700': c.estado === 'cancelado',
+            'bg-gray-100 text-gray-500': c.estado !== 'activo' && c.estado !== 'cancelado',
+          }"
+          x-text="c.estado ? c.estado.toUpperCase() : ''"></span>
+    <span class="px-3 py-1 rounded-full text-sm font-semibold"
+          :class="{
+            'bg-red-100 text-red-700': pagosData.estado_pago === 'pendiente',
+            'bg-yellow-100 text-yellow-700': pagosData.estado_pago === 'parcial',
+            'bg-green-100 text-green-700': pagosData.estado_pago === 'pagado',
+          }"
+          x-text="{pendiente:'💰 PENDIENTE', parcial:'💰 PARCIAL', pagado:'✓ PAGADO'}[pagosData.estado_pago] || ''"></span>
+    <span class="text-gray-400 text-sm" x-text="'Creado: ' + (c.folio || '')"></span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+    <!-- Columna izquierda: datos -->
+    <div class="lg:col-span-2 space-y-5">
+
+      <!-- Cliente -->
+      <div class="card">
+        <h2 class="font-semibold text-gray-700 mb-3">Cliente</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <div>
+            <div class="text-gray-400 text-xs mb-0.5">Nombre</div>
+            <div class="font-semibold" x-text="c.cliente?.nombre"></div>
+          </div>
+          <div>
+            <div class="text-gray-400 text-xs mb-0.5">Teléfono</div>
+            <div x-text="c.cliente?.telefono || '—'"></div>
+          </div>
+          <div class="sm:col-span-2">
+            <div class="text-gray-400 text-xs mb-0.5">Domicilio</div>
+            <div x-text="c.cliente?.domicilio || '—'"></div>
+          </div>
+          <div>
+            <div class="text-gray-400 text-xs mb-0.5">RFC</div>
+            <div x-text="c.cliente?.rfc || '—'"></div>
+          </div>
+        </div>
+        <template x-if="c.cliente?.referencias?.length > 0">
+          <div class="mt-3 pt-3 border-t">
+            <div class="text-gray-400 text-xs mb-2">Referencias</div>
+            <template x-for="ref in c.cliente.referencias" :key="ref.nombre">
+              <div class="text-sm mb-1">
+                <span class="font-medium" x-text="ref.nombre"></span>
+                <span class="text-gray-400" x-text="ref.telefono ? ' · ' + ref.telefono : ''"></span>
+                <span class="text-gray-400 text-xs block" x-text="ref.direccion"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- Materiales -->
+      <div class="card">
+        <h2 class="font-semibold text-gray-700 mb-3">Materiales rentados</h2>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-gray-400 text-xs border-b">
+              <th class="pb-2">Material</th>
+              <th class="pb-2 text-center">Cant.</th>
+              <th class="pb-2 text-right">Precio/día</th>
+              <th class="pb-2 text-right">Total diario</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="l in c.lineas" :key="l.id">
+              <tr class="border-b last:border-0">
+                <td class="py-2 font-medium" x-text="l.material_nombre"></td>
+                <td class="py-2 text-center" x-text="l.cantidad"></td>
+                <td class="py-2 text-right text-gray-600" x-text="'$' + Number(l.precio_unitario).toFixed(2)"></td>
+                <td class="py-2 text-right font-semibold" x-text="'$' + Number(l.total_linea).toFixed(2)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Vigencia y logística -->
+      <div class="card">
+        <h2 class="font-semibold text-gray-700 mb-3">Vigencia y logística</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+          <div>
+            <div class="text-gray-400 text-xs mb-0.5">Fecha inicio</div>
+            <div class="font-semibold" x-text="c.fecha_inicio"></div>
+          </div>
+          <div>
+            <div class="text-gray-400 text-xs mb-0.5">Fecha fin</div>
+            <div class="font-semibold" x-text="c.fecha_fin"></div>
+          </div>
+          <div>
+            <div class="text-gray-400 text-xs mb-0.5">Período</div>
+            <div class="font-semibold" x-text="c.dias + ' día(s)'"></div>
+          </div>
+          <div class="col-span-2 sm:col-span-3">
+            <div class="text-gray-400 text-xs mb-0.5">Lugar de la obra</div>
+            <div x-text="c.lugar_obra || '—'"></div>
+          </div>
+          <div class="col-span-2 sm:col-span-3">
+            <div class="text-gray-400 text-xs mb-0.5">Persona(s) autorizada(s)</div>
+            <div x-text="c.personas_autorizadas || '—'"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notas de remisión -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-gray-700">Notas de remisión</h2>
+          <button @click="abrirModalNota()" class="text-sm bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3 py-1.5 rounded-lg transition">
+            + Nueva nota
+          </button>
+        </div>
+
+        <template x-if="notas.length === 0">
+          <div class="text-gray-400 text-sm">Sin notas de remisión todavía.</div>
+        </template>
+        <div class="space-y-2">
+          <template x-for="n in notas" :key="n.id">
+            <div class="flex justify-between items-center p-2 rounded-lg border border-gray-100 text-sm">
+              <div>
+                <span class="font-semibold text-orange-600" x-text="n.folio"></span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold ml-2"
+                      :class="n.tipo === 'entrega' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'"
+                      x-text="n.tipo === 'entrega' ? 'ENTREGA' : 'DEVOLUCIÓN'"></span>
+                <div class="text-gray-400 text-xs mt-0.5" x-text="n.fecha"></div>
+              </div>
+              <a :href="'/api/notas-remision/' + n.id + '/pdf'" class="text-orange-600 hover:underline text-xs font-medium">
+                ⬇ PDF
+              </a>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: nueva nota de remisión -->
+
+    <!-- Modal: registrar pago -->
+    <div x-show="modalPago.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div @click.outside="modalPago.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-sm p-5">
+        <h3 class="font-semibold text-gray-800 mb-1">Registrar pago</h3>
+        <p class="text-xs text-gray-400 mb-4">
+          Saldo pendiente: <span class="font-semibold text-orange-600"
+            x-text="'$' + Number(pagosData.saldo_pendiente || 0).toFixed(2)"></span>
+        </p>
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="label">Fecha *</label>
+            <input type="date" class="input" x-model="modalPago.fecha">
+          </div>
+          <div>
+            <label class="label">Monto ($) *</label>
+            <input type="number" min="0.01" step="0.01" class="input" x-model.number="modalPago.monto"
+                   :placeholder="'Máx $' + Number(pagosData.saldo_pendiente || 0).toFixed(2)">
+          </div>
+          <div>
+            <label class="label">Método de pago *</label>
+            <select class="input" x-model.number="modalPago.metodo_pago_id" @change="onMetodoCambio()">
+              <option value="">-- Seleccionar --</option>
+              <template x-for="m in metodosPago" :key="m.id">
+                <option :value="m.id" x-text="m.nombre"></option>
+              </template>
+            </select>
+          </div>
+          <div x-show="modalPago.requiere_referencia">
+            <label class="label">No. referencia / folio *</label>
+            <input type="text" class="input" x-model="modalPago.referencia"
+                   placeholder="Número de transferencia, cheque, etc.">
+          </div>
+          <div>
+            <label class="label">Notas</label>
+            <input type="text" class="input text-xs" x-model="modalPago.notas">
+          </div>
+          <div x-show="modalPago.error" class="text-red-600 text-xs" x-text="modalPago.error"></div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button @click="modalPago.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+            <button @click="guardarPago()" :disabled="modalPago.guardando" class="btn-primary text-sm disabled:opacity-40">
+              <span x-show="!modalPago.guardando">Registrar pago</span>
+              <span x-show="modalPago.guardando">Guardando...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div x-show="modalNota.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div @click.outside="modalNota.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+        <h3 class="font-semibold text-gray-800 mb-4">Nueva nota de remisión</h3>
+
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="label">Tipo</label>
+            <select class="input" x-model="modalNota.tipo">
+              <option value="entrega">Entrega de material</option>
+              <option value="devolucion">Devolución de material</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Fecha</label>
+            <input type="date" class="input" x-model="modalNota.fecha">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label">Entrega (nombre)</label>
+              <input type="text" class="input" x-model="modalNota.entregado_por">
+            </div>
+            <div>
+              <label class="label">Recibe (nombre)</label>
+              <input type="text" class="input" x-model="modalNota.recibido_por">
+            </div>
+          </div>
+
+          <div>
+            <label class="label">Materiales</label>
+            <div class="space-y-2">
+              <template x-for="(l, idx) in modalNota.lineas" :key="idx">
+                <div class="flex gap-2 items-center">
+                  <select class="input text-xs" x-model.number="l.material_id">
+                    <template x-for="m in c.lineas" :key="m.material_id">
+                      <option :value="m.material_id" x-text="m.material_nombre"></option>
+                    </template>
+                  </select>
+                  <input type="number" min="1" class="input text-xs w-20" x-model.number="l.cantidad" placeholder="Cant.">
+                  <select x-show="modalNota.tipo === 'devolucion'" class="input text-xs w-28" x-model="l.estado_material">
+                    <option value="bueno">Bueno</option>
+                    <option value="danado">Dañado</option>
+                  </select>
+                  <button @click="modalNota.lineas.splice(idx, 1)" class="text-red-400 hover:text-red-600 text-xs">✕</button>
+                </div>
+              </template>
+            </div>
+            <button @click="modalNota.lineas.push({material_id: c.lineas[0]?.material_id, cantidad: 1, estado_material: 'bueno'})"
+                    class="mt-2 text-orange-600 text-xs font-medium hover:underline">+ Agregar material</button>
+          </div>
+
+          <div>
+            <label class="label">Observaciones</label>
+            <textarea class="input text-xs" rows="2" x-model="modalNota.observaciones"></textarea>
+          </div>
+
+          <div x-show="modalNota.error" class="text-red-600 text-xs" x-text="modalNota.error"></div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button @click="modalNota.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+            <button @click="guardarNota()" :disabled="modalNota.guardando" class="btn-primary text-sm disabled:opacity-40">
+              <span x-show="!modalNota.guardando">Guardar nota</span>
+              <span x-show="modalNota.guardando">Guardando...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna derecha: totales + devolución -->
+    <div class="space-y-5">
+      <div class="card">
+        <h2 class="font-semibold text-gray-700 mb-3">Resumen financiero</h2>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-gray-500">Total diario</span>
+            <span x-text="'$' + Number(c.total_diario).toFixed(2)"></span>
+          </div>
+          <template x-if="c.descuento_pct > 0">
+            <div class="flex justify-between text-red-500">
+              <span>Descuento (<span x-text="c.descuento_pct"></span>%)</span>
+              <span x-text="'- $' + (Number(c.total_diario) - Number(c.total_diario_con_descuento)).toFixed(2)"></span>
+            </div>
+          </template>
+          <div class="flex justify-between">
+            <span class="text-gray-500">IVA (16%)</span>
+            <span x-text="'$' + Number(c.iva).toFixed(2)"></span>
+          </div>
+          <div class="flex justify-between border-t pt-2 font-bold text-base">
+            <span>Total c/IVA</span>
+            <span class="text-orange-600" x-text="'$' + Number(c.total_con_iva).toFixed(2)"></span>
+          </div>
+          <div class="text-xs text-gray-400 italic mt-1" x-text="c.importe_letra"></div>
+        </div>
+      </div>
+
+      <!-- Panel de devolución -->
+      <div class="card" x-show="c.estado === 'activo'">
+        <h2 class="font-semibold text-gray-700 mb-3">Registrar devolución</h2>
+
+        <!-- Aviso regla de gracia -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-700">
+          <strong>Regla de gracia:</strong> El cliente puede devolver el material el siguiente
+          día hábil antes de las <strong>10:00 AM</strong> sin cargo extra.
+        </div>
+
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="label text-xs">Fecha y hora de devolución</label>
+            <input type="datetime-local" class="input text-sm" x-model="devolucion.fecha_hora"
+                   @change="verificarDevolucion()">
+          </div>
+
+          <!-- Preview del resultado -->
+          <div x-show="devolucion.preview" class="rounded-lg p-3 text-sm"
+               :class="devolucion.a_tiempo ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'">
+            <div class="font-semibold mb-1"
+                 :class="devolucion.a_tiempo ? 'text-green-700' : 'text-red-700'"
+                 x-text="devolucion.a_tiempo ? '✓ Sin cargo extra' : '⚠ Se cobra 1 día extra'"></div>
+            <div class="text-gray-600 text-xs" x-text="devolucion.mensaje"></div>
+            <div class="mt-2 font-semibold" x-show="!devolucion.a_tiempo">
+              Cargo adicional: <span class="text-red-600"
+                x-text="'$' + Number(c.total_diario_con_descuento || c.total_diario).toFixed(2) + ' + IVA'"></span>
+            </div>
+          </div>
+
+          <button @click="confirmarDevolucion()"
+                  :disabled="!devolucion.fecha_hora || devolucion.guardando"
+                  class="w-full bg-gray-700 hover:bg-gray-800 disabled:opacity-40 text-white font-semibold py-2 rounded-lg transition text-sm">
+            <span x-show="!devolucion.guardando">Confirmar devolución</span>
+            <span x-show="devolucion.guardando">Registrando...</span>
+          </button>
+          <div x-show="devolucion.error" class="text-red-600 text-xs" x-text="devolucion.error"></div>
+        </div>
+      </div>
+
+      <!-- Contrato cancelado -->
+      <div class="card border border-red-200" x-show="c.estado === 'cancelado'">
+        <h2 class="font-semibold text-red-700 mb-2">Contrato cancelado</h2>
+        <div class="text-sm text-gray-600" x-text="c.motivo_cancelacion || 'Sin motivo especificado.'"></div>
+      </div>
+
+      <!-- Devolución ya registrada -->
+      <div class="card" x-show="c.estado === 'terminado'">
+        <h2 class="font-semibold text-gray-700 mb-2">Devolución</h2>
+        <div class="text-sm space-y-1">
+          <div class="flex justify-between">
+            <span class="text-gray-500">Fecha de devolución</span>
+            <span x-text="c.fecha_devolucion ? new Date(c.fecha_devolucion).toLocaleString('es-MX') : '—'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Día extra cobrado</span>
+            <span :class="c.dia_extra_cobrado ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'"
+                  x-text="c.dia_extra_cobrado ? 'Sí' : 'No'"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel de pagos -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-gray-700">Pagos</h2>
+          <button @click="abrirModalPago()"
+                  x-show="pagosData.saldo_pendiente > 0.01"
+                  class="text-sm bg-green-600 hover:bg-green-700 text-white font-semibold px-3 py-1.5 rounded-lg transition">
+            + Registrar pago
+          </button>
+        </div>
+
+        <!-- Barra de progreso -->
+        <div class="mb-3">
+          <div class="flex justify-between text-xs text-gray-500 mb-1">
+            <span>Pagado: <span class="font-semibold text-green-600"
+              x-text="'$' + Number(pagosData.total_pagado || 0).toFixed(2)"></span></span>
+            <span>Saldo: <span class="font-semibold"
+              :class="pagosData.saldo_pendiente > 0 ? 'text-red-500' : 'text-green-600'"
+              x-text="'$' + Number(pagosData.saldo_pendiente || 0).toFixed(2)"></span></span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div class="bg-green-500 h-2 rounded-full transition-all"
+                 :style="'width:' + Math.min(((pagosData.total_pagado || 0) / (c.total_con_iva || 1)) * 100, 100) + '%'"></div>
+          </div>
+        </div>
+
+        <!-- Estado del pago -->
+        <div class="mb-3">
+          <span class="px-2 py-1 rounded-full text-xs font-semibold"
+                :class="{
+                  'bg-red-100 text-red-700': pagosData.estado_pago === 'pendiente',
+                  'bg-yellow-100 text-yellow-700': pagosData.estado_pago === 'parcial',
+                  'bg-green-100 text-green-700': pagosData.estado_pago === 'pagado',
+                }"
+                x-text="{pendiente:'PENDIENTE DE PAGO', parcial:'PAGO PARCIAL', pagado:'PAGADO'}[pagosData.estado_pago] || ''"></span>
+        </div>
+
+        <!-- Historial de pagos -->
+        <div class="space-y-2">
+          <template x-for="p in (pagosData.pagos || [])" :key="p.id">
+            <div class="flex justify-between items-center p-2 rounded-lg border border-gray-100 text-sm">
+              <div>
+                <span class="font-semibold text-green-700" x-text="'$' + Number(p.monto).toFixed(2)"></span>
+                <span class="text-gray-500 text-xs ml-1" x-text="p.metodo_pago"></span>
+                <div class="text-gray-400 text-xs">
+                  <span x-text="p.fecha"></span>
+                  <span x-show="p.referencia" x-text="' · Ref: ' + p.referencia"></span>
+                </div>
+              </div>
+              <a :href="'/api/pagos/' + p.id + '/recibo'" target="_blank"
+                 class="text-orange-600 hover:underline text-xs font-medium">⬇ Recibo</a>
+            </div>
+          </template>
+          <div x-show="!pagosData.pagos || pagosData.pagos.length === 0"
+               class="text-gray-400 text-xs text-center py-2">Sin pagos registrados</div>
+        </div>
+      </div>
+
+      <div class="card text-center">
+        <a :href="'/api/contratos/' + c.id + '/pdf'"
+           class="block w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-lg transition mb-2">
+          ⬇ Descargar contrato
+        </a>
+        <p class="text-xs text-gray-400">Archivo Word (.docx) con todos los datos llenos</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal cancelar contrato -->
+  <div x-show="modalCancelar.abierto" x-cloak
+       class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6" @click.outside="modalCancelar.abierto = false">
+      <h2 class="font-bold text-red-700 mb-1">Cancelar contrato</h2>
+      <p class="text-xs text-gray-500 mb-4">
+        Esta acción marca el contrato como cancelado y libera el material asociado.
+        Requiere la contraseña de un usuario administrador.
+      </p>
+      <form @submit.prevent="confirmarCancelar()" class="space-y-3 text-sm">
+        <div>
+          <label class="label">Motivo de la cancelación</label>
+          <textarea class="input" rows="2" x-model="modalCancelar.motivo" placeholder="Opcional"></textarea>
+        </div>
+        <div>
+          <label class="label">Contraseña de administrador *</label>
+          <input type="password" class="input" x-model="modalCancelar.password" required autofocus>
+        </div>
+        <div x-show="modalCancelar.error" class="text-red-600 text-xs" x-text="modalCancelar.error"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" @click="modalCancelar.abierto = false" class="btn-secondary">Cerrar</button>
+          <button type="submit" :disabled="modalCancelar.guardando"
+                  class="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-semibold px-4 py-2 rounded-lg transition">
+            <span x-show="!modalCancelar.guardando">Confirmar cancelación</span>
+            <span x-show="modalCancelar.guardando">Cancelando...</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function contratoDetalle(id) {
+  return {
+    c: {},
+    devolucion: {
+      fecha_hora: '',
+      preview: false,
+      a_tiempo: true,
+      mensaje: '',
+      error: '',
+      guardando: false,
+    },
+
+    notas: [],
+    pagosData: { total_pagado: 0, saldo_pendiente: 0, estado_pago: 'pendiente', pagos: [] },
+    metodosPago: [],
+    modalPago: {
+      abierto: false, fecha: '', monto: 0, metodo_pago_id: '',
+      requiere_referencia: false, referencia: '', notas: '',
+      error: '', guardando: false,
+    },
+    modalNota: {
+      abierto: false,
+      tipo: 'entrega',
+      fecha: '',
+      entregado_por: '',
+      recibido_por: '',
+      observaciones: '',
+      lineas: [],
+      error: '',
+      guardando: false,
+    },
+    modalCancelar: { abierto: false, motivo: '', password: '', error: '', guardando: false },
+
+    async init() {
+      this.c = await fetch('/api/contratos/' + id).then(r => r.json());
+      // Pre-llenar con la fecha actual como sugerencia
+      const ahora = new Date();
+      ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+      this.devolucion.fecha_hora = ahora.toISOString().slice(0, 16);
+      if (this.c.estado === 'activo') this.verificarDevolucion();
+      await this.cargarNotas();
+      await this.cargarPagos();
+      this.metodosPago = await fetch('/api/metodos-pago').then(r => r.json());
+    },
+
+    async cargarPagos() {
+      this.pagosData = await fetch('/api/contratos/' + id + '/pagos').then(r => r.json());
+    },
+
+    abrirModalPago() {
+      const hoy = new Date().toISOString().slice(0, 10);
+      this.modalPago = {
+        abierto: true,
+        fecha: hoy,
+        monto: this.pagosData.saldo_pendiente,
+        metodo_pago_id: '',
+        requiere_referencia: false,
+        referencia: '',
+        notas: '',
+        error: '',
+        guardando: false,
+      };
+    },
+
+    onMetodoCambio() {
+      const m = this.metodosPago.find(x => x.id === this.modalPago.metodo_pago_id);
+      this.modalPago.requiere_referencia = m ? m.requiere_referencia : false;
+      if (!this.modalPago.requiere_referencia) this.modalPago.referencia = '';
+    },
+
+    async guardarPago() {
+      if (!this.modalPago.fecha || !this.modalPago.monto || !this.modalPago.metodo_pago_id) {
+        this.modalPago.error = 'Fecha, monto y método de pago son requeridos.'; return;
+      }
+      if (this.modalPago.requiere_referencia && !this.modalPago.referencia) {
+        this.modalPago.error = 'Este método requiere número de referencia.'; return;
+      }
+      this.modalPago.guardando = true;
+      this.modalPago.error = '';
+      try {
+        const res = await fetch('/api/pagos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contrato_id: id,
+            fecha: this.modalPago.fecha,
+            monto: this.modalPago.monto,
+            metodo_pago_id: this.modalPago.metodo_pago_id,
+            referencia: this.modalPago.referencia || null,
+            notas: this.modalPago.notas || null,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al registrar el pago');
+        this.modalPago.abierto = false;
+        await this.cargarPagos();
+        // Actualizar badge de estado en el contrato
+        this.c.estado_pago = data.estado_pago;
+        // Abrir recibo automáticamente
+        window.open('/api/pagos/' + data.id + '/recibo', '_blank');
+      } catch(e) {
+        this.modalPago.error = e.message;
+      } finally {
+        this.modalPago.guardando = false;
+      }
+    },
+
+    async cargarNotas() {
+      this.notas = await fetch('/api/notas-remision?contrato_id=' + id).then(r => r.json());
+    },
+
+    abrirModalNota() {
+      const hoy = new Date().toISOString().slice(0, 10);
+      this.modalNota = {
+        abierto: true,
+        tipo: 'entrega',
+        fecha: hoy,
+        entregado_por: '',
+        recibido_por: '',
+        observaciones: '',
+        lineas: this.c.lineas.map(l => ({ material_id: l.material_id, cantidad: l.cantidad, estado_material: 'bueno' })),
+        error: '',
+        guardando: false,
+      };
+    },
+
+    async guardarNota() {
+      if (this.modalNota.lineas.length === 0) {
+        this.modalNota.error = 'Agrega al menos un material.';
+        return;
+      }
+      this.modalNota.guardando = true;
+      this.modalNota.error = '';
+      try {
+        const res = await fetch('/api/notas-remision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contrato_id: id,
+            tipo: this.modalNota.tipo,
+            fecha: this.modalNota.fecha,
+            entregado_por: this.modalNota.entregado_por,
+            recibido_por: this.modalNota.recibido_por,
+            observaciones: this.modalNota.observaciones,
+            lineas: this.modalNota.lineas,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al guardar la nota');
+        this.modalNota.abierto = false;
+        await this.cargarNotas();
+        window.open('/api/notas-remision/' + data.id + '/pdf', '_blank');
+      } catch (e) {
+        this.modalNota.error = e.message;
+      } finally {
+        this.modalNota.guardando = false;
+      }
+    },
+
+    async verificarDevolucion() {
+      if (!this.devolucion.fecha_hora) return;
+      const isoFecha = new Date(this.devolucion.fecha_hora).toISOString();
+      const r = await fetch(
+        `/api/contratos/${id}/verificar-devolucion?fecha_devolucion=${encodeURIComponent(isoFecha)}`
+      ).then(r => r.json());
+      this.devolucion.preview = true;
+      this.devolucion.a_tiempo = r.a_tiempo;
+      this.devolucion.mensaje = r.mensaje;
+    },
+
+    async confirmarDevolucion() {
+      if (!this.devolucion.fecha_hora) return;
+      // Confirmación extra si hay cargo
+      if (!this.devolucion.a_tiempo) {
+        if (!confirm('⚠️ La devolución es tardía. Se cobrará 1 día extra. ¿Confirmar?')) return;
+      } else {
+        if (!confirm('¿Confirmar la devolución del material?')) return;
+      }
+      this.devolucion.guardando = true;
+      this.devolucion.error = '';
+      try {
+        const isoFecha = new Date(this.devolucion.fecha_hora).toISOString();
+        const res = await fetch(`/api/contratos/${id}/devolucion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fecha_devolucion: isoFecha }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al registrar');
+        // Recargar datos del contrato
+        this.c = await fetch('/api/contratos/' + id).then(r => r.json());
+      } catch(e) {
+        this.devolucion.error = e.message;
+      } finally {
+        this.devolucion.guardando = false;
+      }
+    },
+
+    abrirModalCancelar() {
+      this.modalCancelar = { abierto: true, motivo: '', password: '', error: '', guardando: false };
+    },
+
+    async confirmarCancelar() {
+      this.modalCancelar.error = '';
+      this.modalCancelar.guardando = true;
+      try {
+        const res = await fetch(`/api/contratos/${id}/cancelar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            password_admin: this.modalCancelar.password,
+            motivo: this.modalCancelar.motivo || null,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al cancelar el contrato');
+        this.modalCancelar.abierto = false;
+        this.c = await fetch('/api/contratos/' + id).then(r => r.json());
+      } catch(e) {
+        this.modalCancelar.error = e.message;
+      } finally {
+        this.modalCancelar.guardando = false;
+      }
+    }
+  }
+}
+</script>
+{% endblock %}

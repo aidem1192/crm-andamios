@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Nóminas{% endblock %}
+{% block content %}
+<div x-data="nominasPage()" x-init="init()" x-cloak>
+
+  <div class="mb-5 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-gray-800">Recursos Humanos — Nóminas</h1>
+      <div class="flex gap-3 mt-1">
+        <a href="/rh/empleados" class="text-sm text-gray-400 hover:text-orange-600">Empleados</a>
+        <a href="/rh/nominas" class="text-sm font-semibold text-orange-600 border-b-2 border-orange-500 pb-0.5">Nóminas</a>
+      </div>
+    </div>
+    <button @click="abrirModal()" class="btn-primary text-sm">+ Nueva nómina</button>
+  </div>
+
+  <!-- Listado de nóminas -->
+  <div class="card">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Folio</th>
+            <th class="pb-2">Período</th>
+            <th class="pb-2">Tipo</th>
+            <th class="pb-2">Empleados</th>
+            <th class="pb-2 text-right">Bruto</th>
+            <th class="pb-2 text-right">Deducciones</th>
+            <th class="pb-2 text-right">Neto</th>
+            <th class="pb-2">Estado</th>
+            <th class="pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="n in nominas" :key="n.id">
+            <tr class="border-b last:border-0 hover:bg-gray-50">
+              <td class="py-2 font-semibold text-orange-600" x-text="n.folio"></td>
+              <td class="py-2 text-xs text-gray-500" x-text="n.fecha_inicio + ' → ' + n.fecha_fin"></td>
+              <td class="py-2 text-gray-500 capitalize" x-text="n.tipo_periodo"></td>
+              <td class="py-2 text-center" x-text="n.num_empleados"></td>
+              <td class="py-2 text-right" x-text="'$' + Number(n.total_bruto).toFixed(2)"></td>
+              <td class="py-2 text-right text-red-500" x-text="'$' + Number(n.total_deducciones).toFixed(2)"></td>
+              <td class="py-2 text-right font-bold text-green-600" x-text="'$' + Number(n.total_neto).toFixed(2)"></td>
+              <td class="py-2">
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="{
+                        'bg-yellow-100 text-yellow-700': n.estado === 'borrador',
+                        'bg-blue-100 text-blue-700': n.estado === 'autorizada',
+                        'bg-green-100 text-green-700': n.estado === 'pagada',
+                      }"
+                      x-text="n.estado.toUpperCase()"></span>
+              </td>
+              <td class="py-2">
+                <a :href="'/rh/nominas/' + n.id" class="text-xs text-blue-600 hover:underline">Ver detalle</a>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="nominas.length === 0">
+            <td colspan="9" class="py-4 text-center text-gray-400 text-sm">Sin nóminas registradas</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal nueva nómina -->
+  <div x-show="modal.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <div @click.outside="modal.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-md p-5">
+      <h3 class="font-semibold text-gray-800 mb-4">Nueva nómina</h3>
+
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-700">
+        Se generará una línea por cada empleado activo. Los días trabajados se calculan
+        automáticamente desde los registros de asistencia del período.
+      </div>
+
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="label">Tipo de período</label>
+          <select class="input" x-model="modal.tipo_periodo" @change="sugerirFechas()">
+            <option value="semanal">Semanal (7 días)</option>
+            <option value="quincenal">Quincenal (15 días)</option>
+            <option value="mensual">Mensual (30 días)</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label">Fecha inicio</label>
+            <input type="date" class="input" x-model="modal.fecha_inicio" @change="sugerirFechaFin()">
+          </div>
+          <div>
+            <label class="label">Fecha fin</label>
+            <input type="date" class="input" x-model="modal.fecha_fin">
+          </div>
+        </div>
+        <div>
+          <label class="label">Notas</label>
+          <textarea class="input text-xs" rows="2" x-model="modal.notas"></textarea>
+        </div>
+        <div x-show="modal.error" class="text-red-600 text-xs" x-text="modal.error"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button @click="modal.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+          <button @click="crear()" :disabled="modal.guardando" class="btn-primary text-sm disabled:opacity-40">
+            <span x-show="!modal.guardando">Generar nómina</span>
+            <span x-show="modal.guardando">Generando...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function nominasPage() {
+  return {
+    nominas: [],
+    modal: { abierto: false, tipo_periodo: 'semanal', fecha_inicio: '', fecha_fin: '',
+             notas: '', error: '', guardando: false },
+
+    async init() {
+      this.nominas = await fetch('/api/rh/nominas').then(r => r.json());
+    },
+
+    abrirModal() {
+      this.modal = { abierto: true, tipo_periodo: 'semanal', fecha_inicio: '', fecha_fin: '',
+                     notas: '', error: '', guardando: false };
+      this.sugerirFechas();
+    },
+
+    sugerirFechas() {
+      const hoy = new Date();
+      // Inicio: lunes de la semana actual (o ajustar al período)
+      const dia = hoy.getDay();
+      const lunes = new Date(hoy);
+      lunes.setDate(hoy.getDate() - (dia === 0 ? 6 : dia - 1));
+      lunes.setMinutes(lunes.getMinutes() - lunes.getTimezoneOffset());
+      this.modal.fecha_inicio = lunes.toISOString().slice(0, 10);
+      this.sugerirFechaFin();
+    },
+
+    sugerirFechaFin() {
+      if (!this.modal.fecha_inicio) return;
+      const inicio = new Date(this.modal.fecha_inicio + 'T00:00:00');
+      const dias = { semanal: 6, quincenal: 14, mensual: 29 };
+      const fin = new Date(inicio);
+      fin.setDate(inicio.getDate() + (dias[this.modal.tipo_periodo] || 6));
+      fin.setMinutes(fin.getMinutes() - fin.getTimezoneOffset());
+      this.modal.fecha_fin = fin.toISOString().slice(0, 10);
+    },
+
+    async crear() {
+      if (!this.modal.fecha_inicio || !this.modal.fecha_fin) {
+        this.modal.error = 'Las fechas son requeridas.'; return;
+      }
+      this.modal.guardando = true;
+      this.modal.error = '';
+      try {
+        const res = await fetch('/api/rh/nominas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fecha_inicio: this.modal.fecha_inicio,
+            fecha_fin: this.modal.fecha_fin,
+            tipo_periodo: this.modal.tipo_periodo,
+            notas: this.modal.notas,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al crear nómina');
+        window.location.href = '/rh/nominas/' + data.id;
+      } catch(e) {
+        this.modal.error = e.message;
+        this.modal.guardando = false;
+      }
+    },
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Reportes{% endblock %}
+{% block content %}
+<div x-data="reportesPage()" x-init="init()" x-cloak>
+
+  <div class="mb-5">
+    <h1 class="text-xl font-bold text-gray-800">Reportes y alertas</h1>
+    <p class="text-gray-400 text-sm">Indicadores generales del negocio</p>
+  </div>
+
+  <!-- Alertas de devolución vencida -->
+  <template x-if="alertasDevolucion.length > 0">
+    <div class="card border-red-300 bg-red-50 mb-5">
+      <h2 class="font-semibold text-red-700 mb-3 flex items-center gap-2">
+        ⚠ Alertas de devolución (<span x-text="alertasDevolucion.length"></span>)
+      </h2>
+      <div class="space-y-2">
+        <template x-for="a in alertasDevolucion" :key="a.id">
+          <a :href="'/contratos/' + a.id" class="block bg-white rounded-lg p-3 text-sm hover:shadow transition">
+            <div class="flex justify-between items-center">
+              <div>
+                <span class="font-semibold text-orange-600" x-text="a.folio"></span>
+                <span class="text-gray-600" x-text="' · ' + a.cliente"></span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                    :class="a.dia_extra ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'"
+                    x-text="a.dia_extra ? 'DÍA EXTRA' : 'EN RIESGO'"></span>
+            </div>
+            <div class="text-gray-400 text-xs mt-1" x-text="a.mensaje"></div>
+          </a>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  <!-- Indicadores -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Contratos activos</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="resumen.contratos_activos ?? '—'"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Ingreso diario (activos)</div>
+      <div class="text-2xl font-bold text-orange-600" x-text="'$' + Number(resumen.ingreso_diario_activo || 0).toFixed(2)"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Ingreso este mes</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="'$' + Number(resumen.ingreso_mes_actual || 0).toFixed(2)"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Ingreso histórico total</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="'$' + Number(resumen.ingreso_total_historico || 0).toFixed(2)"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Clientes</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="resumen.total_clientes ?? '—'"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Materiales activos</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="resumen.total_materiales_activos ?? '—'"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Piezas en obra</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="resumen.piezas_en_obra ?? '—'"></div>
+    </div>
+    <div class="card">
+      <div class="text-gray-400 text-xs mb-1">Contratos terminados</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="resumen.contratos_terminados ?? '—'"></div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+    <!-- Contratos por vencer -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-3">Contratos por vencer (próximos 3 días)</h2>
+      <template x-if="porVencer.length === 0">
+        <div class="text-gray-400 text-sm">No hay contratos por vencer.</div>
+      </template>
+      <div class="space-y-2">
+        <template x-for="c in porVencer" :key="c.id">
+          <a :href="'/contratos/' + c.id" class="flex justify-between items-center p-2 rounded-lg hover:bg-gray-50 text-sm">
+            <div>
+              <span class="font-semibold text-orange-600" x-text="c.folio"></span>
+              <span class="text-gray-600" x-text="' · ' + c.cliente"></span>
+              <div class="text-gray-400 text-xs" x-text="'Vence: ' + c.fecha_fin"></div>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                  :class="c.vencido ? 'bg-red-100 text-red-700' : (c.dias_restantes === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700')"
+                  x-text="c.vencido ? 'VENCIDO' : (c.dias_restantes === 0 ? 'HOY' : c.dias_restantes + ' día(s)')"></span>
+          </a>
+        </template>
+      </div>
+    </div>
+
+    <!-- Materiales en obra -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-3">Materiales en obra</h2>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Material</th>
+            <th class="pb-2 text-center">En obra</th>
+            <th class="pb-2 text-right">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="m in materialesEnObra" :key="m.material">
+            <tr class="border-b last:border-0">
+              <td class="py-2" x-text="m.material"></td>
+              <td class="py-2 text-center font-semibold" :class="m.en_obra > 0 ? 'text-orange-600' : 'text-gray-300'" x-text="m.en_obra"></td>
+              <td class="py-2 text-right text-gray-400 text-xs" x-text="m.estado"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Ingresos por mes -->
+    <div class="card lg:col-span-2">
+      <h2 class="font-semibold text-gray-700 mb-3">Ingresos por mes (últimos 6 meses)</h2>
+      <div class="flex items-end gap-3 h-40">
+        <template x-for="m in ingresosPorMes" :key="m.mes">
+          <div class="flex-1 flex flex-col items-center justify-end h-full">
+            <div class="text-xs text-gray-500 mb-1" x-text="'$' + Number(m.ingreso).toFixed(0)"></div>
+            <div class="w-full bg-orange-400 rounded-t-md transition-all"
+                 :style="'height:' + barAltura(m.ingreso) + '%'"></div>
+            <div class="text-xs text-gray-400 mt-1" x-text="m.mes"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function reportesPage() {
+  return {
+    resumen: {},
+    porVencer: [],
+    alertasDevolucion: [],
+    materialesEnObra: [],
+    ingresosPorMes: [],
+
+    async init() {
+      this.resumen = await fetch('/api/reportes/resumen').then(r => r.json());
+      this.porVencer = await fetch('/api/reportes/contratos-por-vencer?dias=3').then(r => r.json());
+      this.alertasDevolucion = await fetch('/api/reportes/alertas-devolucion').then(r => r.json());
+      this.materialesEnObra = await fetch('/api/reportes/materiales-en-obra').then(r => r.json());
+      this.ingresosPorMes = await fetch('/api/reportes/ingresos-por-mes?meses=6').then(r => r.json());
+    },
+
+    barAltura(valor) {
+      const max = Math.max(...this.ingresosPorMes.map(m => m.ingreso), 1);
+      return Math.max((valor / max) * 100, 2);
+    }
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+
+# Base de datos local (SQLite) y documentos generados (contratos, notas, recibos) —
+# contienen datos reales de clientes y se regeneran a partir de la base de datos.
+# En producción se usa Postgres (Supabase) via DATABASE_URL.
+data/

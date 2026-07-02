@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Inicio{% endblock %}
+{% block content %}
+<div x-data="dashboard()" x-init="init()">
+
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+      <p class="text-gray-500 text-sm mt-0.5">Contratos de renta activos y resumen del día</p>
+    </div>
+    <a href="/contratos/nuevo" class="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg transition flex items-center gap-2">
+      <span>+ Nuevo contrato</span>
+    </a>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div class="card text-center">
+      <div class="text-3xl font-bold text-orange-500" x-text="stats.activos">-</div>
+      <div class="text-sm text-gray-500 mt-1">Contratos activos</div>
+    </div>
+    <div class="card text-center">
+      <div class="text-3xl font-bold text-blue-500" x-text="stats.clientes">-</div>
+      <div class="text-sm text-gray-500 mt-1">Clientes</div>
+    </div>
+    <div class="card text-center">
+      <div class="text-3xl font-bold text-green-500" x-text="'$' + stats.ingreso_diario.toLocaleString('es-MX', {minimumFractionDigits:2})">-</div>
+      <div class="text-sm text-gray-500 mt-1">Ingreso diario c/IVA</div>
+    </div>
+    <div class="card text-center">
+      <div class="text-3xl font-bold text-purple-500" x-text="stats.materiales">-</div>
+      <div class="text-sm text-gray-500 mt-1">Materiales en catálogo</div>
+    </div>
+  </div>
+
+  <!-- Contratos recientes -->
+  <div class="card">
+    <h2 class="font-semibold text-gray-700 mb-4">Contratos recientes</h2>
+    <div x-show="contratos.length === 0" class="text-gray-400 text-center py-8">
+      No hay contratos registrados. <a href="/contratos/nuevo" class="text-orange-500 underline">Crea el primero</a>.
+    </div>
+    <div class="overflow-x-auto" x-show="contratos.length > 0">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-500 border-b">
+            <th class="pb-2 pr-4">Folio</th>
+            <th class="pb-2 pr-4">Cliente</th>
+            <th class="pb-2 pr-4">Inicio</th>
+            <th class="pb-2 pr-4">Fin</th>
+            <th class="pb-2 pr-4">Días</th>
+            <th class="pb-2 pr-4 text-right">Total c/IVA</th>
+            <th class="pb-2">Estado</th>
+            <th class="pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="c in contratos" :key="c.id">
+            <tr class="border-b last:border-0 hover:bg-gray-50">
+              <td class="py-2 pr-4 font-mono text-xs font-semibold text-orange-600" x-text="c.folio"></td>
+              <td class="py-2 pr-4 font-medium" x-text="c.cliente"></td>
+              <td class="py-2 pr-4 text-gray-600" x-text="c.fecha_inicio"></td>
+              <td class="py-2 pr-4 text-gray-600" x-text="c.fecha_fin"></td>
+              <td class="py-2 pr-4 text-center" x-text="c.dias"></td>
+              <td class="py-2 pr-4 text-right font-semibold" x-text="'$' + Number(c.total_con_iva).toLocaleString('es-MX', {minimumFractionDigits:2})"></td>
+              <td class="py-2">
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="{
+                        'bg-green-100 text-green-700': c.estado === 'activo',
+                        'bg-red-100 text-red-700': c.estado === 'cancelado',
+                        'bg-gray-100 text-gray-500': c.estado !== 'activo' && c.estado !== 'cancelado',
+                      }"
+                      x-text="c.estado"></span>
+              </td>
+              <td class="py-2 pl-2">
+                <a :href="'/contratos/' + c.id" class="text-orange-500 hover:underline text-xs">Ver</a>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function dashboard() {
+  return {
+    contratos: [],
+    stats: { activos: 0, clientes: 0, ingreso_diario: 0, materiales: 0 },
+    async init() {
+      const [cs, cls, mats] = await Promise.all([
+        fetch('/api/contratos').then(r => r.json()),
+        fetch('/api/clientes').then(r => r.json()),
+        fetch('/api/materiales').then(r => r.json()),
+      ]);
+      this.contratos = cs;
+      this.stats.activos = cs.filter(c => c.estado === 'activo').length;
+      this.stats.clientes = cls.length;
+      this.stats.materiales = mats.length;
+      this.stats.ingreso_diario = cs.filter(c => c.estado === 'activo')
+        .reduce((sum, c) => sum + Number(c.total_con_iva), 0);
+    }
+  }
+}
+</script>
+{% endblock %}
