@@ -32,6 +32,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Más específico primero: /static/uploads vive en data/ (volumen persistente en Railway),
+# separado del resto de /static que sí viaja con el código.
+app.mount("/static/uploads", StaticFiles(directory=str(BASE_DIR / "data" / "uploads")), name="uploads")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 

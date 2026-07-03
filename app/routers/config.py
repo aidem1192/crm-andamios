@@ -18,8 +18,16 @@ def _require_admin(request: Request):
     if not user or user.get("rol") != "admin":
         raise HTTPException(status_code=403, detail="Solo el administrador puede realizar esta acción")
 
-UPLOAD_DIR = Path(__file__).parent.parent.parent / "static" / "uploads"
+# Vive dentro de data/ (donde está el volumen persistente en producción) en vez de
+# static/, para que un logo subido por el usuario no se pierda en el próximo despliegue.
+UPLOAD_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Bootstrap: si el volumen está vacío (primer arranque), copia el logo por defecto
+# que sí viaja con el código, para que la empresa no aparezca sin logo tras un deploy limpio.
+_LOGO_BOOTSTRAP = Path(__file__).parent.parent.parent / "static" / "uploads" / "logo.png"
+if _LOGO_BOOTSTRAP.exists() and not (UPLOAD_DIR / "logo.png").exists():
+    shutil.copy(_LOGO_BOOTSTRAP, UPLOAD_DIR / "logo.png")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
