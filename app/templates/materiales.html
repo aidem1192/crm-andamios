@@ -165,6 +165,11 @@
             <label class="label">Stock total (unidades en posesión)</label>
             <input type="number" class="input" x-model.number="form.stock" min="0" step="1">
           </div>
+          <!-- Aviso: los kits arman sus productos en un paso aparte, después de guardar -->
+          <div x-show="form.tipo !== 'pieza' && !editandoId"
+               class="col-span-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+            Al guardar, se abrirá enseguida la pantalla para elegir las piezas que forman este kit.
+          </div>
         </div>
 
         <div x-show="error" class="text-red-600 text-xs" x-text="error"></div>
@@ -319,6 +324,7 @@ function materialesPage() {
     async guardar() {
       this.error = '';
       try {
+        const esNuevo = !this.editandoId;
         const url = this.editandoId ? '/api/materiales/' + this.editandoId : '/api/materiales';
         const method = this.editandoId ? 'PUT' : 'POST';
         const body = { ...this.form };
@@ -328,6 +334,11 @@ function materialesPage() {
         if (!res.ok) throw new Error(data.detail || 'Error');
         this.modalAbierto = false;
         await Promise.all([this.buscar(), this.cargarPiezas()]);
+        // Si se acaba de crear un kit, seguimos directo a elegir sus productos —
+        // si no, el botón "Ver componentes" es fácil de pasar por alto.
+        if (esNuevo && data.tipo !== 'pieza') {
+          this.abrirComponentes(data);
+        }
       } catch(e) { this.error = e.message; }
     },
 
