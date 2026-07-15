@@ -86,7 +86,9 @@
           <thead>
             <tr class="text-left text-gray-400 text-xs border-b">
               <th class="pb-2">Material</th>
-              <th class="pb-2 text-center">Cant.</th>
+              <th class="pb-2 text-center">Contrat.</th>
+              <th class="pb-2 text-center">Devuelto</th>
+              <th class="pb-2 text-center">En campo</th>
               <th class="pb-2 text-right">Precio/día</th>
               <th class="pb-2 text-right">Total diario</th>
             </tr>
@@ -96,6 +98,14 @@
               <tr class="border-b last:border-0">
                 <td class="py-2 font-medium" x-text="l.material_nombre"></td>
                 <td class="py-2 text-center" x-text="l.cantidad"></td>
+                <td class="py-2 text-center">
+                  <span :class="(l.cantidad_devuelta||0) >= l.cantidad ? 'text-green-600 font-semibold' : 'text-gray-600'"
+                        x-text="l.cantidad_devuelta || 0"></span>
+                </td>
+                <td class="py-2 text-center">
+                  <span :class="(l.cantidad - (l.cantidad_devuelta||0)) > 0 ? 'text-orange-600 font-semibold' : 'text-gray-400'"
+                        x-text="Math.max(0, l.cantidad - (l.cantidad_devuelta||0))"></span>
+                </td>
                 <td class="py-2 text-right text-gray-600" x-text="'$' + Number(l.precio_unitario).toFixed(2)"></td>
                 <td class="py-2 text-right font-semibold" x-text="'$' + Number(l.total_linea).toFixed(2)"></td>
               </tr>
@@ -133,36 +143,148 @@
 
       <!-- Notas de remisión -->
       <div class="card">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between mb-4">
           <h2 class="font-semibold text-gray-700">Notas de remisión</h2>
-          <button @click="abrirModalNota()" class="text-sm bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3 py-1.5 rounded-lg transition">
-            + Nueva nota
-          </button>
+          <div class="flex gap-2">
+            <button x-show="c.estado === 'activo'" @click="abrirModalDevolucion()"
+                    class="text-sm bg-green-600 hover:bg-green-700 text-white font-semibold px-3 py-1.5 rounded-lg transition">
+              📥 Registrar devolución
+            </button>
+            <button @click="abrirModalNota()"
+                    class="text-sm bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3 py-1.5 rounded-lg transition">
+              + Nueva nota
+            </button>
+          </div>
         </div>
 
-        <template x-if="notas.length === 0">
-          <div class="text-gray-400 text-sm">Sin notas de remisión todavía.</div>
-        </template>
-        <div class="space-y-2">
-          <template x-for="n in notas" :key="n.id">
-            <div class="flex justify-between items-center p-2 rounded-lg border border-gray-100 text-sm">
-              <div>
-                <span class="font-semibold text-orange-600" x-text="n.folio"></span>
-                <span class="px-2 py-0.5 rounded-full text-xs font-semibold ml-2"
-                      :class="n.tipo === 'entrega' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'"
-                      x-text="n.tipo === 'entrega' ? 'ENTREGA' : 'DEVOLUCIÓN'"></span>
-                <div class="text-gray-400 text-xs mt-0.5" x-text="n.fecha"></div>
-              </div>
-              <a :href="'/api/notas-remision/' + n.id + '/pdf'" class="text-orange-600 hover:underline text-xs font-medium">
-                ⬇ PDF
-              </a>
-            </div>
+        <!-- Material de Salida (Entregas) -->
+        <div class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-blue-600 text-sm font-semibold">📤 Material de Salida (Entregas)</span>
+          </div>
+          <template x-if="notas.filter(n => n.tipo === 'entrega').length === 0">
+            <div class="text-gray-400 text-xs py-2">Sin notas de entrega.</div>
           </template>
+          <div class="space-y-2">
+            <template x-for="n in notas.filter(n => n.tipo === 'entrega')" :key="n.id">
+              <div class="rounded-lg border border-blue-100 bg-blue-50/30 p-2 text-sm">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <span class="font-semibold text-blue-700" x-text="n.folio"></span>
+                    <span class="text-gray-400 text-xs ml-2" x-text="n.fecha"></span>
+                    <span x-show="n.entregado_por" class="text-gray-500 text-xs ml-1" x-text="'· ' + n.entregado_por"></span>
+                  </div>
+                  <a :href="'/api/notas-remision/' + n.id + '/pdf'" class="text-blue-600 hover:underline text-xs font-medium shrink-0">⬇ PDF</a>
+                </div>
+                <div class="mt-1 space-y-0.5">
+                  <template x-for="l in (n.lineas || [])" :key="l.material_id">
+                    <div class="text-xs text-gray-600 flex justify-between">
+                      <span x-text="l.material_nombre"></span>
+                      <span class="font-semibold text-blue-700" x-text="l.cantidad + ' pzas'"></span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Material de Entrada (Devoluciones) -->
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-green-600 text-sm font-semibold">📥 Material de Entrada (Devoluciones)</span>
+          </div>
+          <template x-if="notas.filter(n => n.tipo === 'devolucion').length === 0">
+            <div class="text-gray-400 text-xs py-2">Sin notas de devolución.</div>
+          </template>
+          <div class="space-y-2">
+            <template x-for="n in notas.filter(n => n.tipo === 'devolucion')" :key="n.id">
+              <div class="rounded-lg border border-green-100 bg-green-50/30 p-2 text-sm">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <span class="font-semibold text-green-700" x-text="n.folio"></span>
+                    <span class="text-gray-400 text-xs ml-2" x-text="n.fecha"></span>
+                    <span x-show="n.recibido_por" class="text-gray-500 text-xs ml-1" x-text="'· Recibió: ' + n.recibido_por"></span>
+                  </div>
+                  <a :href="'/api/notas-remision/' + n.id + '/pdf'" class="text-green-600 hover:underline text-xs font-medium shrink-0">⬇ PDF</a>
+                </div>
+                <div class="mt-1 space-y-0.5">
+                  <template x-for="l in (n.lineas || [])" :key="l.material_id">
+                    <div class="text-xs text-gray-600 flex justify-between">
+                      <span x-text="l.material_nombre"></span>
+                      <div>
+                        <span class="font-semibold text-green-700" x-text="l.cantidad + ' pzas'"></span>
+                        <span x-show="l.estado_material === 'danado'" class="ml-1 text-red-500 text-xs">(dañado)</span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Modal: nueva nota de remisión -->
+
+    <!-- Modal: devolución parcial -->
+    <div x-show="modalDevolucion.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div @click.outside="modalDevolucion.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+        <h3 class="font-semibold text-gray-800 mb-1">Registrar devolución de material</h3>
+        <p class="text-xs text-gray-400 mb-4">Indica qué material regresó. Si es parcial, ajusta las cantidades.</p>
+
+        <div class="space-y-3 text-sm">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label">Fecha</label>
+              <input type="date" class="input" x-model="modalDevolucion.fecha">
+            </div>
+            <div>
+              <label class="label">Recibe (nombre)</label>
+              <input type="text" class="input" x-model="modalDevolucion.recibido_por" placeholder="Quien recibe">
+            </div>
+          </div>
+
+          <div>
+            <label class="label">Material devuelto</label>
+            <div class="space-y-2">
+              <template x-for="(l, idx) in modalDevolucion.lineas" :key="idx">
+                <div class="flex gap-2 items-center p-2 rounded-lg bg-gray-50 border border-gray-100">
+                  <span class="flex-1 text-xs font-medium text-gray-700" x-text="l.material_nombre"></span>
+                  <div class="text-right shrink-0">
+                    <div class="text-xs text-gray-400 mb-0.5">Pendiente: <span class="font-semibold text-orange-600" x-text="l.maximo"></span></div>
+                    <div class="flex items-center gap-1">
+                      <input type="number" min="0" :max="l.maximo" class="input text-xs w-20 text-center" x-model.number="l.cantidad">
+                      <select class="input text-xs w-24" x-model="l.estado_material">
+                        <option value="bueno">Bueno</option>
+                        <option value="danado">Dañado</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div>
+            <label class="label">Observaciones</label>
+            <textarea class="input text-xs" rows="2" x-model="modalDevolucion.observaciones"></textarea>
+          </div>
+
+          <div x-show="modalDevolucion.error" class="text-red-600 text-xs" x-text="modalDevolucion.error"></div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button @click="modalDevolucion.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+            <button @click="guardarDevolucionParcial()" :disabled="modalDevolucion.guardando"
+                    class="bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-semibold px-4 py-2 rounded-lg transition text-sm">
+              <span x-show="!modalDevolucion.guardando">Registrar devolución</span>
+              <span x-show="modalDevolucion.guardando">Guardando...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Modal: registrar pago -->
     <div x-show="modalPago.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -296,31 +418,58 @@
               <span x-text="'- $' + (Number(c.total_diario) - Number(c.total_diario_con_descuento)).toFixed(2)"></span>
             </div>
           </template>
-          <div class="flex justify-between">
+          <div class="flex justify-between" x-show="c.incluye_iva">
             <span class="text-gray-500">IVA (16%)</span>
             <span x-text="'$' + Number(c.iva).toFixed(2)"></span>
           </div>
+          <div x-show="!c.incluye_iva" class="flex items-center gap-1 text-xs text-gray-400 italic">
+            <span>Sin IVA</span>
+          </div>
           <div class="flex justify-between border-t pt-2 font-bold text-base">
-            <span>Total c/IVA</span>
+            <span x-text="c.incluye_iva ? 'Total c/IVA' : 'Total (sin IVA)'"></span>
             <span class="text-orange-600" x-text="'$' + Number(c.total_con_iva).toFixed(2)"></span>
           </div>
           <div class="text-xs text-gray-400 italic mt-1" x-text="c.importe_letra"></div>
         </div>
       </div>
 
-      <!-- Panel de devolución -->
+      <!-- Panel de estado de material -->
       <div class="card" x-show="c.estado === 'activo'">
-        <h2 class="font-semibold text-gray-700 mb-3">Registrar devolución</h2>
+        <h2 class="font-semibold text-gray-700 mb-3">Estado del material en campo</h2>
+
+        <div class="space-y-2 mb-4">
+          <template x-for="l in c.lineas" :key="l.id">
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="font-medium text-gray-700" x-text="l.material_nombre"></span>
+                <span :class="(l.cantidad - (l.cantidad_devuelta||0)) > 0 ? 'text-orange-600 font-semibold' : 'text-green-600 font-semibold'"
+                      x-text="(l.cantidad - (l.cantidad_devuelta||0)) > 0
+                        ? (l.cantidad - (l.cantidad_devuelta||0)) + ' en campo'
+                        : '✓ Devuelto'"></span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-1.5">
+                <div class="bg-green-500 h-1.5 rounded-full transition-all"
+                     :style="'width:' + Math.min(((l.cantidad_devuelta||0) / l.cantidad) * 100, 100) + '%'"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Todo devuelto: mostrar botón de cerrar -->
+        <template x-if="c.lineas && c.lineas.every(l => (l.cantidad_devuelta||0) >= l.cantidad)">
+          <div class="bg-green-50 border border-green-200 rounded-lg p-3 mb-3 text-sm text-green-700">
+            ✓ Todo el material fue devuelto. Puedes cerrar el contrato.
+          </div>
+        </template>
 
         <!-- Aviso regla de gracia -->
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-700">
-          <strong>Regla de gracia:</strong> El cliente puede devolver el material el siguiente
-          día hábil antes de las <strong>10:00 AM</strong> sin cargo extra.
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3 text-xs text-blue-700">
+          <strong>Regla de gracia:</strong> Sin cargo extra si el cliente devuelve antes de las <strong>10:00 AM</strong> del siguiente día hábil.
         </div>
 
         <div class="space-y-3 text-sm">
           <div>
-            <label class="label text-xs">Fecha y hora de devolución</label>
+            <label class="label text-xs">Fecha y hora de cierre</label>
             <input type="datetime-local" class="input text-sm" x-model="devolucion.fecha_hora"
                    @change="verificarDevolucion()">
           </div>
@@ -341,8 +490,8 @@
           <button @click="confirmarDevolucion()"
                   :disabled="!devolucion.fecha_hora || devolucion.guardando"
                   class="w-full bg-gray-700 hover:bg-gray-800 disabled:opacity-40 text-white font-semibold py-2 rounded-lg transition text-sm">
-            <span x-show="!devolucion.guardando">Confirmar devolución</span>
-            <span x-show="devolucion.guardando">Registrando...</span>
+            <span x-show="!devolucion.guardando">Cerrar contrato</span>
+            <span x-show="devolucion.guardando">Cerrando...</span>
           </button>
           <div x-show="devolucion.error" class="text-red-600 text-xs" x-text="devolucion.error"></div>
         </div>
@@ -503,6 +652,10 @@ function contratoDetalle(id) {
       guardando: false,
     },
     modalCancelar: { abierto: false, motivo: '', password: '', error: '', guardando: false },
+    modalDevolucion: {
+      abierto: false, fecha: '', recibido_por: '', observaciones: '',
+      lineas: [], error: '', guardando: false,
+    },
 
     async init() {
       this.c = await fetch('/api/contratos/' + id).then(r => r.json());
@@ -666,6 +819,68 @@ function contratoDetalle(id) {
         this.devolucion.error = e.message;
       } finally {
         this.devolucion.guardando = false;
+      }
+    },
+
+    abrirModalDevolucion() {
+      const hoy = new Date().toISOString().slice(0, 10);
+      const lineasPendientes = (this.c.lineas || [])
+        .filter(l => (l.cantidad - (l.cantidad_devuelta || 0)) > 0)
+        .map(l => ({
+          material_id: l.material_id,
+          material_nombre: l.material_nombre,
+          cantidad: l.cantidad - (l.cantidad_devuelta || 0),
+          maximo: l.cantidad - (l.cantidad_devuelta || 0),
+          estado_material: 'bueno',
+        }));
+      if (lineasPendientes.length === 0) {
+        alert('Todo el material ya fue registrado como devuelto.');
+        return;
+      }
+      this.modalDevolucion = {
+        abierto: true, fecha: hoy, recibido_por: '', observaciones: '',
+        lineas: lineasPendientes, error: '', guardando: false,
+      };
+    },
+
+    async guardarDevolucionParcial() {
+      const lineasConCantidad = this.modalDevolucion.lineas.filter(l => l.cantidad > 0);
+      if (lineasConCantidad.length === 0) {
+        this.modalDevolucion.error = 'Ingresa al menos una cantidad mayor a 0.'; return;
+      }
+      if (!this.modalDevolucion.fecha) {
+        this.modalDevolucion.error = 'La fecha es requerida.'; return;
+      }
+      this.modalDevolucion.guardando = true;
+      this.modalDevolucion.error = '';
+      try {
+        const res = await fetch('/api/notas-remision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contrato_id: id,
+            tipo: 'devolucion',
+            fecha: this.modalDevolucion.fecha,
+            recibido_por: this.modalDevolucion.recibido_por || null,
+            observaciones: this.modalDevolucion.observaciones || null,
+            lineas: lineasConCantidad.map(l => ({
+              material_id: l.material_id,
+              cantidad: l.cantidad,
+              estado_material: l.estado_material,
+            })),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al registrar la devolución');
+        this.modalDevolucion.abierto = false;
+        // Recargar todo
+        this.c = await fetch('/api/contratos/' + id).then(r => r.json());
+        await this.cargarNotas();
+        window.open('/api/notas-remision/' + data.id + '/pdf', '_blank');
+      } catch(e) {
+        this.modalDevolucion.error = e.message;
+      } finally {
+        this.modalDevolucion.guardando = false;
       }
     },
 

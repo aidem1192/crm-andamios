@@ -38,20 +38,69 @@
   </div>
 
   <div class="card">
-    <input type="text" class="input mb-4" placeholder="Buscar cliente..." x-model="q" @input.debounce.300ms="buscar()">
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <input type="text" class="input flex-1 min-w-40" placeholder="Buscar cliente..." x-model="q" @input.debounce.300ms="buscar()">
+      <div class="flex gap-1">
+        <button @click="filtroLN = null; buscar()"
+                :class="filtroLN === null ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                class="px-3 py-2 rounded-lg text-sm font-medium transition">Todos</button>
+        <button @click="filtroLN = false; buscar()"
+                :class="filtroLN === false ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                class="px-3 py-2 rounded-lg text-sm font-medium transition">Activos</button>
+        <button @click="filtroLN = true; buscar()"
+                :class="filtroLN === true ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'"
+                class="px-3 py-2 rounded-lg text-sm font-medium transition">⛔ Lista negra</button>
+      </div>
+    </div>
     <div x-show="clientes.length === 0" class="text-gray-400 text-center py-8">No hay clientes registrados.</div>
     <div class="space-y-2">
       <template x-for="c in clientes" :key="c.id">
-        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-orange-50 transition">
-          <div>
-            <div class="font-semibold text-sm" x-text="c.nombre"></div>
-            <div class="text-xs text-gray-400" x-text="[c.telefono, c.domicilio].filter(Boolean).join(' · ')"></div>
+        <div class="flex items-center justify-between p-3 rounded-lg transition"
+             :class="c.lista_negra ? 'bg-red-50 border border-red-200 hover:bg-red-100' : 'bg-gray-50 hover:bg-orange-50'">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-semibold text-sm" x-text="c.nombre"></span>
+              <span x-show="c.lista_negra"
+                    class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white">⛔ LISTA NEGRA</span>
+            </div>
+            <div class="text-xs text-gray-400 truncate" x-text="[c.telefono, c.domicilio].filter(Boolean).join(' · ')"></div>
+            <div x-show="c.lista_negra && c.motivo_lista_negra"
+                 class="text-xs text-red-600 mt-0.5 italic" x-text="'Motivo: ' + c.motivo_lista_negra"></div>
           </div>
-          <div class="flex gap-2">
+          <div class="flex gap-2 shrink-0 ml-2">
             <button @click="editarCliente(c)" class="text-xs text-orange-500 hover:underline">Editar</button>
+            <button x-show="!c.lista_negra" @click="abrirModalListaNegra(c)"
+                    class="text-xs text-red-500 hover:underline font-medium">⛔ Lista negra</button>
+            <button x-show="c.lista_negra" @click="quitarListaNegra(c)"
+                    class="text-xs text-green-600 hover:underline font-medium">✓ Quitar</button>
           </div>
         </div>
       </template>
+    </div>
+  </div>
+
+  <!-- Modal lista negra -->
+  <div x-show="modalLN.abierto" x-cloak class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6" @click.outside="modalLN.abierto = false">
+      <h2 class="font-bold text-red-700 mb-1">⛔ Agregar a lista negra</h2>
+      <p class="text-sm text-gray-500 mb-1">Cliente: <strong x-text="modalLN.nombre"></strong></p>
+      <p class="text-xs text-gray-400 mb-4">Este cliente no podrá tener nuevos contratos de renta.</p>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="label">Motivo <span class="text-gray-400 font-normal">(recomendado)</span></label>
+          <textarea class="input" rows="3" x-model="modalLN.motivo"
+                    placeholder="Ej: Daño a material, deuda pendiente, incumplimiento..."></textarea>
+        </div>
+        <div x-show="modalLN.error" class="text-red-600 text-xs" x-text="modalLN.error"></div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button @click="modalLN.abierto = false" class="btn-secondary">Cancelar</button>
+          <button @click="confirmarListaNegra()" :disabled="modalLN.guardando"
+                  class="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-semibold px-4 py-2 rounded-lg transition">
+            <span x-show="!modalLN.guardando">Confirmar</span>
+            <span x-show="modalLN.guardando">Guardando...</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -109,9 +158,10 @@
 <script>
 function clientesPage() {
   return {
-    clientes: [], q: '', modalAbierto: false, editandoId: null, error: '',
+    clientes: [], q: '', filtroLN: null, modalAbierto: false, editandoId: null, error: '',
     importResult: null,
     form: { nombre: '', telefono: '', domicilio: '', rfc: '', referencias: [] },
+    modalLN: { abierto: false, id: null, nombre: '', motivo: '', error: '', guardando: false },
     async init() { await this.buscar(); },
     async importarExcel(event) {
       const archivo = event.target.files[0];
@@ -132,7 +182,10 @@ function clientesPage() {
       }
     },
     async buscar() {
-      this.clientes = await fetch('/api/clientes?q=' + encodeURIComponent(this.q)).then(r => r.json());
+      const params = new URLSearchParams({ q: this.q });
+      if (this.filtroLN === true)  params.set('lista_negra', 'true');
+      if (this.filtroLN === false) params.set('lista_negra', 'false');
+      this.clientes = await fetch('/api/clientes?' + params).then(r => r.json());
     },
     abrirModal() {
       this.editandoId = null; this.error = '';
@@ -157,7 +210,37 @@ function clientesPage() {
         this.modalAbierto = false;
         await this.buscar();
       } catch(e) { this.error = e.message; }
-    }
+    },
+
+    abrirModalListaNegra(c) {
+      this.modalLN = { abierto: true, id: c.id, nombre: c.nombre, motivo: '', error: '', guardando: false };
+    },
+
+    async confirmarListaNegra() {
+      this.modalLN.guardando = true;
+      this.modalLN.error = '';
+      try {
+        const res = await fetch('/api/clientes/' + this.modalLN.id + '/lista-negra', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: this.modalLN.motivo || null }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        this.modalLN.abierto = false;
+        await this.buscar();
+      } catch(e) {
+        this.modalLN.error = e.message;
+      } finally {
+        this.modalLN.guardando = false;
+      }
+    },
+
+    async quitarListaNegra(c) {
+      if (!confirm('¿Quitar a ' + c.nombre + ' de la lista negra?')) return;
+      await fetch('/api/clientes/' + c.id + '/lista-negra', { method: 'DELETE' });
+      await this.buscar();
+    },
   }
 }
 </script>

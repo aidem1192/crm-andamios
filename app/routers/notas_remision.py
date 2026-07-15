@@ -3,8 +3,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date
-from app.database import get_db, NotaRemision, LineaNotaRemision, Contrato, Material
+from datetime import date, datetime
+from app.database import get_db, NotaRemision, LineaNotaRemision, Contrato, LineaContrato, Material
 
 router = APIRouter(prefix="/api/notas-remision", tags=["notas-remision"])
 
@@ -45,6 +45,12 @@ def listar_notas(contrato_id: Optional[int] = None, db: Session = Depends(get_db
         "fecha": str(n.fecha),
         "entregado_por": n.entregado_por,
         "recibido_por": n.recibido_por,
+        "lineas": [{
+            "material_id": l.material_id,
+            "material_nombre": l.material.nombre if l.material else "",
+            "cantidad": l.cantidad,
+            "estado_material": l.estado_material,
+        } for l in n.lineas],
     } for n in notas]
 
 
@@ -110,6 +116,26 @@ def crear_nota(data: NotaRemisionCreate, db: Session = Depends(get_db)):
             cantidad=l.cantidad,
             estado_material=l.estado_material,
         ))
+
+    # Si es devolución, actualizar cantidad_devuelta por línea de contrato
+    if data.tipo == "devolucion":
+        for l in data.lineas:
+            lc = db.query(LineaContrato).filter(
+                LineaContrato.contrato_id == data.contrato_id,
+                LineaContrato.material_id == l.material_id,
+            ).first()
+            if lc:
+                lc.cantidad_devuelta = min((lc.cantidad_devuelta or 0) + l.cantidad, lc.cantidad)
+
+        # Verificar si todo fue devuelto
+        lineas_contrato = db.query(LineaContrato).filter(
+            LineaContrato.contrato_id == data.contrato_id
+        ).all()
+        todo_devuelto = all((lc.cantidad_devuelta or 0) >= lc.cantidad for lc in lineas_contrato)
+
+        if todo_devuelto and contrato.estado == "activo":
+            contrato.estado = "terminado"
+            contrato.fecha_devolucion = datetime.utcnow()
 
     db.commit()
     db.refresh(nota)

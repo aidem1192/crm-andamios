@@ -18,7 +18,9 @@ def resumen(db: Session = Depends(get_db)):
     contratos_no_cancelados = [c for c in todos_contratos if c.estado != "cancelado"]
 
     ingreso_diario_activo = sum(
-        (c.total_diario_con_descuento or c.total_diario) for c in contratos_activos
+        (c.total_diario_con_descuento or c.total_diario) *
+        (1.16 if (c.incluye_iva if c.incluye_iva is not None else True) else 1.0)
+        for c in contratos_activos
     )
     ingreso_total_historico = sum(c.total_con_iva or 0 for c in contratos_no_cancelados)
     ingreso_mes_actual = sum(

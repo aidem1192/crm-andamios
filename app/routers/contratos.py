@@ -33,15 +33,20 @@ class ContratoCreate(BaseModel):
     descuento_pct: float = 0.0
     pin_descuento: Optional[str] = None
     notas: Optional[str] = None
+    incluye_iva: bool = True
     lineas: List[LineaContratoSchema]
 
 
-def _calcular_totales(lineas_data: list, descuento_pct: float):
+def _calcular_totales(lineas_data: list, descuento_pct: float, incluye_iva: bool = True):
     total_diario = sum(l["cantidad"] * l["precio_unitario"] for l in lineas_data)
     descuento_monto = total_diario * (descuento_pct / 100)
     total_con_descuento = total_diario - descuento_monto
-    iva = round(total_con_descuento * IVA_PCT, 2)
-    total_con_iva = round(total_con_descuento + iva, 2)
+    if incluye_iva:
+        iva = round(total_con_descuento * IVA_PCT, 2)
+        total_con_iva = round(total_con_descuento + iva, 2)
+    else:
+        iva = 0.0
+        total_con_iva = round(total_con_descuento, 2)
     return total_diario, total_con_descuento, iva, total_con_iva
 
 
@@ -80,6 +85,7 @@ def obtener_contrato(contrato_id: int, db: Session = Depends(get_db)):
             "material_id": l.material_id,
             "material_nombre": l.material.nombre if l.material else "",
             "cantidad": l.cantidad,
+            "cantidad_devuelta": l.cantidad_devuelta or 0,
             "precio_unitario": l.precio_unitario,
             "total_linea": l.total_linea,
             "precio_venta": l.material.precio_venta if l.material else 0,
@@ -109,6 +115,7 @@ def obtener_contrato(contrato_id: int, db: Session = Depends(get_db)):
         "iva": c.iva,
         "total_con_iva": c.total_con_iva,
         "importe_letra": numero_a_letra(c.total_con_iva or 0),
+        "incluye_iva": c.incluye_iva if c.incluye_iva is not None else True,
         "estado": c.estado,
         "notas": c.notas,
         "motivo_cancelacion": c.motivo_cancelacion,
@@ -116,6 +123,26 @@ def obtener_contrato(contrato_id: int, db: Session = Depends(get_db)):
         "dia_extra_cobrado": c.dia_extra_cobrado,
         "lineas": lineas,
     }
+
+
+@router.get("/{contrato_id}/estado-material")
+def estado_material(contrato_id: int, db: Session = Depends(get_db)):
+    """Devuelve el estado de devolución por línea de contrato."""
+    c = db.query(Contrato).filter(Contrato.id == contrato_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    lineas = []
+    for l in c.lineas:
+        devuelta = l.cantidad_devuelta or 0
+        lineas.append({
+            "material_id": l.material_id,
+            "material_nombre": l.material.nombre if l.material else "",
+            "cantidad": l.cantidad,
+            "cantidad_devuelta": devuelta,
+            "pendiente": max(0, l.cantidad - devuelta),
+        })
+    todo_devuelto = all(row["pendiente"] == 0 for row in lineas) if lineas else False
+    return {"lineas": lineas, "todo_devuelto": todo_devuelto}
 
 
 @router.post("", status_code=201)
@@ -129,6 +156,9 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
     cliente = db.query(Cliente).filter(Cliente.id == data.cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    if cliente.lista_negra:
+        motivo = f" Motivo: {cliente.motivo_lista_negra}" if cliente.motivo_lista_negra else ""
+        raise HTTPException(status_code=403, detail=f"Este cliente está en la lista negra y no puede rentar material.{motivo}")
 
     # Validar fechas
     if data.fecha_fin < data.fecha_inicio:
@@ -150,7 +180,7 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
             "precio_unitario": l.precio_unitario,
         })
 
-    total_diario, total_con_descuento, iva, total_con_iva = _calcular_totales(lineas_data, data.descuento_pct)
+    total_diario, total_con_descuento, iva, total_con_iva = _calcular_totales(lineas_data, data.descuento_pct, data.incluye_iva)
 
     folio = _siguiente_folio(db)
     contrato = Contrato(
@@ -168,6 +198,7 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
         total_diario_con_descuento=total_con_descuento,
         iva=iva,
         total_con_iva=total_con_iva,
+        incluye_iva=data.incluye_iva,
         notas=data.notas,
     )
     db.add(contrato)
@@ -270,7 +301,8 @@ def calcular_totales(data: dict):
     """Endpoint para calcular totales en tiempo real desde el frontend."""
     lineas = data.get("lineas", [])
     descuento_pct = float(data.get("descuento_pct", 0))
-    total_diario, total_con_descuento, iva, total_con_iva = _calcular_totales(lineas, descuento_pct)
+    incluye_iva = bool(data.get("incluye_iva", True))
+    total_diario, total_con_descuento, iva, total_con_iva = _calcular_totales(lineas, descuento_pct, incluye_iva)
     return {
         "total_diario": round(total_diario, 2),
         "total_con_descuento": round(total_con_descuento, 2),
@@ -326,7 +358,8 @@ def registrar_devolucion(contrato_id: int, body: DevolucionBody, db: Session = D
     # Si hubo día extra, actualizar totales
     if resultado["dia_extra"]:
         total_extra_dia = c.total_diario_con_descuento if c.total_diario_con_descuento else c.total_diario
-        nuevo_iva = round(total_extra_dia * IVA_PCT, 2)
+        aplica_iva = c.incluye_iva if c.incluye_iva is not None else True
+        nuevo_iva = round(total_extra_dia * IVA_PCT, 2) if aplica_iva else 0.0
         c.total_con_iva = round(c.total_con_iva + total_extra_dia + nuevo_iva, 2)
         c.iva = round(c.iva + nuevo_iva, 2)
         c.dias += 1

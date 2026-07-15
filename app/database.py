@@ -65,6 +65,8 @@ class Cliente(Base):
     domicilio = Column(Text)
     rfc = Column(String(20))
     email = Column(String(100))
+    lista_negra = Column(Boolean, default=False)
+    motivo_lista_negra = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     referencias = relationship("ReferenciaCliente", back_populates="cliente", cascade="all, delete-orphan")
@@ -132,6 +134,7 @@ class Contrato(Base):
     estado = Column(String(20), default="activo")
     notas = Column(Text)
     motivo_cancelacion = Column(Text, nullable=True)
+    incluye_iva = Column(Boolean, default=True)
     # Devolución real
     fecha_devolucion = Column(DateTime, nullable=True)
     dia_extra_cobrado = Column(Boolean, default=False)
@@ -153,6 +156,7 @@ class LineaContrato(Base):
     cantidad = Column(Integer, nullable=False)
     precio_unitario = Column(Float, nullable=False)
     total_linea = Column(Float, nullable=False)
+    cantidad_devuelta = Column(Integer, default=0)
 
     contrato = relationship("Contrato", back_populates="lineas")
     material = relationship("Material")
@@ -375,4 +379,27 @@ def _migrar_columnas_nuevas():
     if "motivo_cancelacion" not in columnas:
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE contratos ADD COLUMN motivo_cancelacion TEXT"))
+            conn.commit()
+
+    if "lineas_contrato" in inspector.get_table_names():
+        cols_lc = [c["name"] for c in inspector.get_columns("lineas_contrato")]
+        if "cantidad_devuelta" not in cols_lc:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE lineas_contrato ADD COLUMN cantidad_devuelta INTEGER DEFAULT 0"))
+                conn.commit()
+
+    if "contratos" in inspector.get_table_names():
+        cols_c = [c["name"] for c in inspector.get_columns("contratos")]
+        if "incluye_iva" not in cols_c:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE contratos ADD COLUMN incluye_iva BOOLEAN DEFAULT 1"))
+                conn.commit()
+
+    if "clientes" in inspector.get_table_names():
+        cols_cli = [c["name"] for c in inspector.get_columns("clientes")]
+        with engine.connect() as conn:
+            if "lista_negra" not in cols_cli:
+                conn.execute(text("ALTER TABLE clientes ADD COLUMN lista_negra BOOLEAN DEFAULT 0"))
+            if "motivo_lista_negra" not in cols_cli:
+                conn.execute(text("ALTER TABLE clientes ADD COLUMN motivo_lista_negra TEXT"))
             conn.commit()

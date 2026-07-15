@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -290,3 +290,74 @@ def get_auditlog(
         "ip": l.ip,
         "fecha": str(l.fecha)[:19].replace("T", " ") if l.fecha else None,
     } for l in logs]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backup manual
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/api/config/backup")
+def hacer_backup(request: Request, db: Session = Depends(get_db)):
+    """Genera un respaldo inmediato y devuelve info. Solo admin."""
+    _require_admin(request)
+    import subprocess, sys
+    script = Path(__file__).parent.parent.parent / "backup.py"
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True, text=True, timeout=30,
+    )
+    log_audit(db, request, "backup_manual", "sistema", None, "Respaldo manual ejecutado")
+    db.commit()
+    return {
+        "ok": result.returncode == 0,
+        "salida": result.stdout.strip() or result.stderr.strip(),
+    }
+
+
+@router.get("/api/config/backup/descargar")
+def descargar_backup(request: Request):
+    """Descarga el respaldo más reciente como archivo. Solo admin."""
+    _require_admin(request)
+    import os
+    backup_dir = Path(__file__).parent.parent.parent / "backups"
+    db_path = Path(__file__).parent.parent.parent / "data" / "andamios.db"
+
+    # Si no hay backups aún, descargar la DB directamente
+    archivos = sorted(backup_dir.glob("andamios_*.db")) if backup_dir.exists() else []
+    if not archivos:
+        if db_path.exists():
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M")
+            return FileResponse(
+                path=str(db_path),
+                filename=f"andamios_{ts}.db",
+                media_type="application/octet-stream",
+            )
+        raise HTTPException(status_code=404, detail="No hay respaldos disponibles")
+
+    ultimo = archivos[-1]
+    return FileResponse(
+        path=str(ultimo),
+        filename=ultimo.name,
+        media_type="application/octet-stream",
+    )
+
+
+@router.get("/api/config/backup/lista")
+def lista_backups(request: Request):
+    """Lista los respaldos disponibles. Solo admin."""
+    _require_admin(request)
+    backup_dir = Path(__file__).parent.parent.parent / "backups"
+    if not backup_dir.exists():
+        return {"backups": [], "total": 0}
+    archivos = sorted(backup_dir.glob("andamios_*.db"), reverse=True)
+    return {
+        "backups": [
+            {
+                "nombre": f.name,
+                "fecha": f.name.replace("andamios_", "").replace(".db", "").replace("_", " "),
+                "size_kb": f.stat().st_size // 1024,
+            }
+            for f in archivos
+        ],
+        "total": len(archivos),
+    }

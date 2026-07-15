@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -36,6 +36,8 @@ def _cliente_dict(c: Cliente) -> dict:
         "domicilio": c.domicilio,
         "rfc": c.rfc,
         "email": c.email,
+        "lista_negra": bool(c.lista_negra),
+        "motivo_lista_negra": c.motivo_lista_negra,
         "created_at": str(c.created_at)[:10] if c.created_at else None,
         "referencias": [
             {"id": r.id, "nombre": r.nombre, "telefono": r.telefono, "direccion": r.direccion}
@@ -45,10 +47,14 @@ def _cliente_dict(c: Cliente) -> dict:
 
 
 @router.get("")
-def listar_clientes(q: Optional[str] = None, db: Session = Depends(get_db)):
+def listar_clientes(q: Optional[str] = None, lista_negra: Optional[bool] = None, db: Session = Depends(get_db)):
     query = db.query(Cliente)
     if q:
         query = query.filter(Cliente.nombre.ilike(f"%{q}%"))
+    if lista_negra is True:
+        query = query.filter(Cliente.lista_negra == True)
+    elif lista_negra is False:
+        query = query.filter((Cliente.lista_negra == False) | (Cliente.lista_negra == None))
     return [_cliente_dict(c) for c in query.order_by(Cliente.nombre).all()]
 
 
@@ -160,3 +166,29 @@ def eliminar_cliente(cliente_id: int, db: Session = Depends(get_db)):
     db.delete(cliente)
     db.commit()
     return {"ok": True}
+
+
+class ListaNegraBody(BaseModel):
+    motivo: Optional[str] = None
+
+
+@router.post("/{cliente_id}/lista-negra")
+def agregar_lista_negra(cliente_id: int, body: ListaNegraBody, db: Session = Depends(get_db)):
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    cliente.lista_negra = True
+    cliente.motivo_lista_negra = body.motivo
+    db.commit()
+    return _cliente_dict(cliente)
+
+
+@router.delete("/{cliente_id}/lista-negra")
+def quitar_lista_negra(cliente_id: int, db: Session = Depends(get_db)):
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    cliente.lista_negra = False
+    cliente.motivo_lista_negra = None
+    db.commit()
+    return _cliente_dict(cliente)

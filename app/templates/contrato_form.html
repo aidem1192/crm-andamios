@@ -30,12 +30,26 @@
              @click.outside="clienteDropdownAbierto = false"
              class="absolute z-10 bg-white border border-gray-200 rounded-lg shadow-lg w-full mt-1 max-h-48 overflow-y-auto">
           <template x-for="c in clientesSugeridos" :key="c.id">
-            <div class="px-4 py-2 hover:bg-orange-50 cursor-pointer text-sm"
+            <div class="px-4 py-2 cursor-pointer text-sm"
+                 :class="c.lista_negra ? 'bg-red-50 hover:bg-red-100 opacity-80' : 'hover:bg-orange-50'"
                  @click="seleccionarCliente(c); clienteDropdownAbierto = false">
-              <div class="font-medium" x-text="c.nombre"></div>
+              <div class="flex items-center gap-2">
+                <span class="font-medium" x-text="c.nombre"></span>
+                <span x-show="c.lista_negra" class="text-xs font-bold text-red-600">⛔ LISTA NEGRA</span>
+              </div>
               <div class="text-gray-400 text-xs" x-text="c.telefono || ''"></div>
             </div>
           </template>
+        </div>
+      </div>
+
+      <!-- Advertencia lista negra -->
+      <div x-show="clienteEnListaNegra" x-cloak
+           class="mb-4 flex items-start gap-2 bg-red-50 border border-red-300 rounded-lg px-4 py-3 text-sm text-red-700">
+        <span class="text-lg">⛔</span>
+        <div>
+          <div class="font-bold">Este cliente está en la lista negra</div>
+          <div x-text="motivoListaNegra ? 'Motivo: ' + motivoListaNegra : 'No se puede crear un contrato para este cliente.'" class="text-xs mt-0.5"></div>
         </div>
       </div>
 
@@ -204,6 +218,16 @@
         Totales
       </h2>
 
+      <!-- IVA -->
+      <div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-3">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" class="w-4 h-4 accent-orange-500" x-model="form.incluye_iva" @change="calcularTotales()">
+          <span class="text-sm font-medium text-gray-700">Cobrar IVA (16%)</span>
+        </label>
+        <span class="text-xs text-gray-400" x-show="!form.incluye_iva">Sin IVA — precio final directo</span>
+        <span class="text-xs text-gray-400" x-show="form.incluye_iva">Se agrega 16% al total</span>
+      </div>
+
       <!-- Descuento -->
       <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
         <div class="flex items-center gap-3 mb-2">
@@ -241,12 +265,12 @@
           <span class="text-gray-600">Total con descuento</span>
           <span class="font-semibold" x-text="'$' + totales.total_con_descuento.toFixed(2)"></span>
         </div>
-        <div class="flex justify-between">
+        <div class="flex justify-between" x-show="form.incluye_iva">
           <span class="text-gray-600">IVA (16%)</span>
           <span x-text="'$' + totales.iva.toFixed(2)"></span>
         </div>
         <div class="flex justify-between border-t pt-2 text-base">
-          <span class="font-bold text-gray-800">Total diario c/IVA</span>
+          <span class="font-bold text-gray-800" x-text="form.incluye_iva ? 'Total diario c/IVA' : 'Total diario (sin IVA)'"></span>
           <span class="font-bold text-orange-600 text-lg" x-text="'$' + totales.total_con_iva.toFixed(2)"></span>
         </div>
         <div class="text-xs text-gray-500 italic" x-text="'Son: ' + totales.importe_letra"></div>
@@ -259,7 +283,7 @@
         Cancelar
       </a>
       <button type="submit"
-              :disabled="guardando || form.lineas.length === 0"
+              :disabled="guardando || form.lineas.length === 0 || clienteEnListaNegra"
               class="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg transition flex items-center gap-2">
         <span x-show="!guardando">Guardar contrato</span>
         <span x-show="guardando">Guardando...</span>
@@ -291,10 +315,13 @@ function contratoForm() {
       lugar_celebracion: 'ANDAMIOS Y DERIVADOS',
       descuento_pct: 0,
       pin_descuento: '',
+      incluye_iva: true,
     },
     clienteBusqueda: '',
     clientesSugeridos: [],
     clienteDropdownAbierto: false,
+    clienteEnListaNegra: false,
+    motivoListaNegra: '',
     materialesTodos: [],
     materialesFiltrados: [],
     lineaActiva: null,
@@ -323,6 +350,8 @@ function contratoForm() {
     },
 
     seleccionarCliente(c) {
+      this.clienteEnListaNegra = !!c.lista_negra;
+      this.motivoListaNegra = c.motivo_lista_negra || '';
       this.form.cliente_id = c.id;
       this.form.cliente_nombre = c.nombre;
       this.form.cliente_telefono = c.telefono || '';
@@ -375,7 +404,7 @@ function contratoForm() {
       const total_diario = lineas.reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
       const descuento = total_diario * (this.form.descuento_pct / 100);
       const total_con_descuento = total_diario - descuento;
-      const iva = total_con_descuento * 0.16;
+      const iva = this.form.incluye_iva ? total_con_descuento * 0.16 : 0;
       const total_con_iva = total_con_descuento + iva;
       this.totales = { total_diario, total_con_descuento, iva, total_con_iva, importe_letra: '' };
       // Get importe en letra del servidor
@@ -383,7 +412,7 @@ function contratoForm() {
         fetch('/api/contratos/calcular-totales', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lineas, descuento_pct: this.form.descuento_pct })
+          body: JSON.stringify({ lineas, descuento_pct: this.form.descuento_pct, incluye_iva: this.form.incluye_iva })
         }).then(r => r.json()).then(d => { this.totales = d; });
       }
     },
@@ -444,6 +473,7 @@ function contratoForm() {
           lugar_celebracion: this.form.lugar_celebracion,
           descuento_pct: this.form.descuento_pct,
           pin_descuento: this.form.pin_descuento,
+          incluye_iva: this.form.incluye_iva,
           lineas: lineasValidas.map(l => ({
             material_id: l.material_id,
             cantidad: l.cantidad,
