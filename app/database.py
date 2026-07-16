@@ -392,14 +392,14 @@ def _migrar_columnas_nuevas():
         cols_c = [c["name"] for c in inspector.get_columns("contratos")]
         if "incluye_iva" not in cols_c:
             with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE contratos ADD COLUMN incluye_iva BOOLEAN DEFAULT 1"))
+                conn.execute(text("ALTER TABLE contratos ADD COLUMN incluye_iva BOOLEAN DEFAULT TRUE"))
                 conn.commit()
 
     if "clientes" in inspector.get_table_names():
         cols_cli = [c["name"] for c in inspector.get_columns("clientes")]
         with engine.connect() as conn:
             if "lista_negra" not in cols_cli:
-                conn.execute(text("ALTER TABLE clientes ADD COLUMN lista_negra BOOLEAN DEFAULT 0"))
+                conn.execute(text("ALTER TABLE clientes ADD COLUMN lista_negra BOOLEAN DEFAULT FALSE"))
             if "motivo_lista_negra" not in cols_cli:
                 conn.execute(text("ALTER TABLE clientes ADD COLUMN motivo_lista_negra TEXT"))
             conn.commit()
