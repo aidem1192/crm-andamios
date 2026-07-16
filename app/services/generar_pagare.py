@@ -157,7 +157,7 @@ def generar_pagare(contrato_data: dict) -> Path:
     _add_run(p, f'Folio: {folio}', bold=True, size=10)
     p2 = c1.add_paragraph()
     p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    _add_run(p2, f'Fecha: {_fecha_larga(fecha_ini)}', size=9, italic=True)
+    _add_run(p2, 'Fecha: _________________________', size=9, italic=True)
 
     doc.add_paragraph()
 
@@ -207,7 +207,7 @@ def generar_pagare(contrato_data: dict) -> Path:
     cuerpo.paragraph_format.space_after = Pt(10)
     cuerpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    _add_run(cuerpo, f'En {lugar_cel}, a {_fecha_larga(fecha_ini)}. — Yo, ')
+    _add_run(cuerpo, f'En {lugar_cel}, a _____ de _________________ de ________. — Yo, ')
     _add_run(cuerpo, cliente, bold=True, underline=True)
     _add_run(cuerpo, ', con domicilio en ')
     _add_run(cuerpo, domicilio or '____________________________', bold=True)
