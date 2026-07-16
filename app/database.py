@@ -387,6 +387,25 @@ def get_db():
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrar_columnas_nuevas()
+    _seed_metodos_pago()
+
+
+def _seed_metodos_pago():
+    """Crea los métodos de pago por defecto si la tabla está vacía."""
+    db = SessionLocal()
+    try:
+        if db.query(MetodoPago).count() == 0:
+            defaults = [
+                MetodoPago(nombre="Efectivo",       descripcion="Pago en efectivo",                    requiere_referencia=False, activo=True, orden=1),
+                MetodoPago(nombre="Transferencia",  descripcion="Transferencia bancaria / SPEI",       requiere_referencia=True,  activo=True, orden=2),
+                MetodoPago(nombre="Tarjeta",        descripcion="Pago con tarjeta de débito o crédito",requiere_referencia=False, activo=True, orden=3),
+                MetodoPago(nombre="Cheque",         descripcion="Pago con cheque",                     requiere_referencia=True,  activo=True, orden=4),
+            ]
+            for m in defaults:
+                db.add(m)
+            db.commit()
+    finally:
+        db.close()
 
 
 def _migrar_columnas_nuevas():
