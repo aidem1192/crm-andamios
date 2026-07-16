@@ -8,10 +8,14 @@
       <a href="/" class="text-gray-400 hover:text-gray-600">← Inicio</a>
       <h1 class="text-xl font-bold text-gray-800">Contrato <span class="text-orange-600 font-mono" x-text="c.folio"></span></h1>
     </div>
-    <div class="flex gap-2">
+    <div class="flex gap-2 flex-wrap">
       <a :href="'/api/contratos/' + c.id + '/pdf'"
          class="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm">
         ⬇ Descargar contrato (.docx)
+      </a>
+      <a :href="'/api/contratos/' + c.id + '/pagare'"
+         class="bg-gray-700 hover:bg-gray-900 text-white font-semibold px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm">
+        📄 Descargar pagaré (.docx)
       </a>
       <button @click="abrirModalCancelar()" x-show="c.estado === 'activo'"
               class="bg-white border border-red-300 hover:bg-red-50 text-red-600 font-semibold px-4 py-2 rounded-lg transition text-sm">
@@ -582,7 +586,11 @@
            class="block w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-lg transition mb-2">
           ⬇ Descargar contrato
         </a>
-        <p class="text-xs text-gray-400">Archivo Word (.docx) con todos los datos llenos</p>
+        <a :href="'/api/contratos/' + c.id + '/pagare'"
+           class="block w-full bg-gray-700 hover:bg-gray-900 text-white font-semibold py-3 rounded-lg transition mb-2">
+          📄 Descargar pagaré
+        </a>
+        <p class="text-xs text-gray-400">Archivos Word (.docx) con todos los datos llenos</p>
       </div>
     </div>
   </div>

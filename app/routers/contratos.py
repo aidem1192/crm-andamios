@@ -219,6 +219,42 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
     return {"id": contrato.id, "folio": contrato.folio}
 
 
+@router.get("/{contrato_id}/pagare")
+def descargar_pagare(contrato_id: int, db: Session = Depends(get_db)):
+    from app.services.generar_pagare import generar_pagare
+
+    c = db.query(Contrato).filter(Contrato.id == contrato_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+
+    lineas_data = []
+    for l in c.lineas:
+        lineas_data.append({
+            "material": l.material.nombre if l.material else "",
+            "cantidad": l.cantidad,
+            "valor_convencional": l.material.precio_venta if l.material else 0,
+        })
+
+    contrato_data = {
+        "folio": c.folio,
+        "cliente_nombre": c.cliente.nombre if c.cliente else "",
+        "cliente_telefono": c.cliente.telefono or "",
+        "cliente_domicilio": c.cliente.domicilio or "",
+        "cliente_rfc": c.cliente.rfc or "",
+        "lineas": lineas_data,
+        "fecha_inicio": c.fecha_inicio,
+        "lugar_obra": c.lugar_obra or "",
+        "lugar_celebracion": c.lugar_celebracion or "CHIHUAHUA, CHIHUAHUA",
+    }
+
+    output_path = generar_pagare(contrato_data)
+    return FileResponse(
+        path=str(output_path),
+        filename=f"Pagare_{c.folio}.docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
 @router.get("/{contrato_id}/pdf")
 def descargar_contrato(contrato_id: int, db: Session = Depends(get_db)):
     from app.services.generar_contrato import generar_contrato, OUTPUT_DIR
