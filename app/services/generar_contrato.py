@@ -52,6 +52,54 @@ def _set_celda(celda, texto: str):
     _consolidar_runs(celda, texto)
 
 
+def _set_celda_con_merge(celda, valor: str):
+    """
+    Reemplaza el contenido de una celda que puede tener merge fields de Word.
+    Si hay un merge field, reemplaza su valor display (el run entre 'separate' y 'end').
+    Si no hay merge field, usa _consolidar_runs.
+    """
+    from docx.oxml.ns import qn
+
+    valor_str = str(valor)
+    encontro_merge = False
+
+    for para_elem in celda._tc.iter(qn('w:p')):
+        after_sep = False
+        replaced = False
+
+        for r_elem in list(para_elem.iter(qn('w:r'))):
+            # Detectar marcadores de campo
+            fld = r_elem.find(qn('w:fldChar'))
+            if fld is not None:
+                ftype = fld.get(qn('w:fldCharType'))
+                if ftype == 'separate':
+                    after_sep = True
+                elif ftype == 'end':
+                    after_sep = False
+                continue
+
+            # Saltar la instrucción del campo
+            if r_elem.find(qn('w:instrText')) is not None:
+                encontro_merge = True
+                continue
+
+            # El primer run después de 'separate' es el valor display
+            if after_sep and not replaced:
+                t = r_elem.find(qn('w:t'))
+                if t is not None:
+                    t.text = valor_str
+                    t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+                    replaced = True
+            elif after_sep and replaced:
+                # Limpiar runs de display extras
+                t = r_elem.find(qn('w:t'))
+                if t is not None:
+                    t.text = ''
+
+    if not encontro_merge:
+        _consolidar_runs(celda, valor_str)
+
+
 def _formatear_referencias(refs: list) -> str:
     partes = []
     for ref in refs[:2]:
@@ -128,10 +176,11 @@ def generar_contrato(contrato_data: dict) -> Path:
             total    = f"${float(l.get('total_diario', 0)):.2f}"
             # En fila 1 el run de valor está en posición 3; en filas 2-9 no hay runs con valor en c0-c2
             if i == 1:
-                _run_valor(c0, 3, nombre)
-                _run_valor(c1, 3, cantidad)
-                _run_valor(c2, 3, precio)
-                _run_valor(c3, 3, total)
+                # Fila 1 tiene merge fields — usar reemplazo inteligente
+                _set_celda_con_merge(c0, nombre)
+                _set_celda_con_merge(c1, cantidad)
+                _set_celda_con_merge(c2, precio)
+                _set_celda_con_merge(c3, total)
             else:
                 # Filas 2-9: escribir en el primer run disponible de cada celda vacía
                 _consolidar_runs(c0, nombre)
@@ -151,8 +200,9 @@ def generar_contrato(contrato_data: dict) -> Path:
     # Runs: ['TOTALFINAL', ':', ' ', '$', '', '', '', '$96.00', '']
     # → run[3] = '$', run[7] = valor total sin IVA → actualizar run[7] y vaciar runs extras
     total_sin_iva = contrato_data.get("total_diario", 0)
-    _run_valor(t[5].rows[10].cells[2], 7, f"${total_iva:.2f}")
-    _run_valor(t[5].rows[10].cells[3], 4, f"${total_sin_iva:.2f}")
+    # Fila de totales también puede tener merge fields (TOTAL_A_PAGAR, SUMATORIA_PAGO_POR_DIA)
+    _set_celda_con_merge(t[5].rows[10].cells[2], f"${total_iva:.2f}")
+    _set_celda_con_merge(t[5].rows[10].cells[3], f"${total_sin_iva:.2f}")
 
     # -----------------------------------------------------------------------
     # TABLA 6 — Importe total con IVA + importe en letra
