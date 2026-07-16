@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast, Date as SADate
 from datetime import date, datetime, timedelta
 from typing import Optional
 from pydantic import BaseModel
@@ -24,7 +24,7 @@ def _rango(periodo: str, fecha_ini: Optional[str], fecha_fin: Optional[str]):
         return lunes, hoy
     if periodo == "mes":
         return date(hoy.year, hoy.month, 1), hoy
-    if periodo == "año":
+    if periodo in ("año", "anio"):
         return date(hoy.year, 1, 1), hoy
     if periodo == "hoy":
         return hoy, hoy
@@ -55,7 +55,10 @@ def resumen(db: Session = Depends(get_db)):
     total_clientes = db.query(Cliente).count()
     total_materiales_activos = db.query(Material).filter(Material.activo == True).count()
 
-    piezas_en_obra = sum(l.cantidad for c in contratos_activos for l in c.lineas)
+    piezas_en_obra = sum(
+        max(0, l.cantidad - (l.cantidad_devuelta or 0))
+        for c in contratos_activos for l in c.lineas
+    )
 
     return {
         "contratos_activos": len(contratos_activos),
@@ -124,7 +127,8 @@ def materiales_en_obra(db: Session = Depends(get_db)):
     for c in activos:
         for l in c.lineas:
             nombre = l.material.nombre if l.material else "?"
-            conteo[nombre] = conteo.get(nombre, 0) + l.cantidad
+            en_campo = max(0, l.cantidad - (l.cantidad_devuelta or 0))
+            conteo[nombre] = conteo.get(nombre, 0) + en_campo
 
     materiales = db.query(Material).filter(Material.activo == True).all()
     resultado = []
@@ -188,13 +192,13 @@ def ingresos_periodo(
     )
     total_cobrado = sum(p.monto for p in pagos)
 
-    # Contratos creados en el periodo
+    # Contratos creados en el periodo (cast compatible con SQLite y Postgres)
     contratos = (
         db.query(Contrato)
         .filter(
             Contrato.estado != "cancelado",
-            func.date(Contrato.created_at) >= ini,
-            func.date(Contrato.created_at) <= fin,
+            cast(Contrato.created_at, SADate) >= ini,
+            cast(Contrato.created_at, SADate) <= fin,
         )
         .all()
     )
@@ -358,8 +362,8 @@ def exportar_excel(
         db.query(Contrato)
         .filter(
             Contrato.estado != "cancelado",
-            func.date(Contrato.created_at) >= ini,
-            func.date(Contrato.created_at) <= fin,
+            cast(Contrato.created_at, SADate) >= ini,
+            cast(Contrato.created_at, SADate) <= fin,
         )
         .all()
     )
