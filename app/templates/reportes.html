@@ -3,9 +3,33 @@
 {% block content %}
 <div x-data="reportesPage()" x-init="init()" x-cloak>
 
-  <div class="mb-5">
-    <h1 class="text-xl font-bold text-gray-800">Reportes y alertas</h1>
-    <p class="text-gray-400 text-sm">Indicadores generales del negocio</p>
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-bold text-gray-800">Reportes</h1>
+      <p class="text-gray-400 text-sm">Indicadores, ingresos, gastos y tendencias</p>
+    </div>
+    <!-- Selector de periodo -->
+    <div class="flex flex-wrap items-center gap-2">
+      <template x-for="p in periodos" :key="p.key">
+        <button @click="selPeriodo = p.key; cargarPeriodo()"
+          :class="selPeriodo === p.key ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 border border-gray-200'"
+          class="px-3 py-1.5 rounded-lg text-sm font-medium transition">
+          <span x-text="p.label"></span>
+        </button>
+      </template>
+      <div x-show="selPeriodo === 'personalizado'" class="flex items-center gap-1">
+        <input type="date" x-model="rangoIni" class="input text-sm py-1" @change="cargarPeriodo()">
+        <span class="text-gray-400 text-xs">al</span>
+        <input type="date" x-model="rangoFin" class="input text-sm py-1" @change="cargarPeriodo()">
+      </div>
+      <button @click="exportarExcel()"
+        class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Exportar Excel
+      </button>
+    </div>
   </div>
 
   <!-- Alertas de devolución vencida -->
@@ -33,7 +57,7 @@
     </div>
   </template>
 
-  <!-- Indicadores -->
+  <!-- KPIs generales -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
     <div class="card">
       <div class="text-gray-400 text-xs mb-1">Contratos activos</div>
@@ -41,35 +65,89 @@
     </div>
     <div class="card">
       <div class="text-gray-400 text-xs mb-1">Ingreso diario (activos)</div>
-      <div class="text-2xl font-bold text-orange-600" x-text="'$' + Number(resumen.ingreso_diario_activo || 0).toFixed(2)"></div>
+      <div class="text-2xl font-bold text-orange-600" x-text="'$' + fmt(resumen.ingreso_diario_activo)"></div>
     </div>
     <div class="card">
       <div class="text-gray-400 text-xs mb-1">Ingreso este mes</div>
-      <div class="text-2xl font-bold text-gray-800" x-text="'$' + Number(resumen.ingreso_mes_actual || 0).toFixed(2)"></div>
+      <div class="text-2xl font-bold text-gray-800" x-text="'$' + fmt(resumen.ingreso_mes_actual)"></div>
     </div>
     <div class="card">
-      <div class="text-gray-400 text-xs mb-1">Ingreso histórico total</div>
-      <div class="text-2xl font-bold text-gray-800" x-text="'$' + Number(resumen.ingreso_total_historico || 0).toFixed(2)"></div>
-    </div>
-    <div class="card">
-      <div class="text-gray-400 text-xs mb-1">Clientes</div>
-      <div class="text-2xl font-bold text-gray-800" x-text="resumen.total_clientes ?? '—'"></div>
-    </div>
-    <div class="card">
-      <div class="text-gray-400 text-xs mb-1">Materiales activos</div>
-      <div class="text-2xl font-bold text-gray-800" x-text="resumen.total_materiales_activos ?? '—'"></div>
-    </div>
-    <div class="card">
-      <div class="text-gray-400 text-xs mb-1">Piezas en obra</div>
-      <div class="text-2xl font-bold text-gray-800" x-text="resumen.piezas_en_obra ?? '—'"></div>
-    </div>
-    <div class="card">
-      <div class="text-gray-400 text-xs mb-1">Contratos terminados</div>
-      <div class="text-2xl font-bold text-gray-800" x-text="resumen.contratos_terminados ?? '—'"></div>
+      <div class="text-gray-400 text-xs mb-1">Histórico total</div>
+      <div class="text-2xl font-bold text-gray-800" x-text="'$' + fmt(resumen.ingreso_total_historico)"></div>
     </div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+  <!-- KPIs del periodo seleccionado -->
+  <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
+    <div class="card bg-blue-50 border border-blue-100">
+      <div class="text-blue-400 text-xs mb-1">Facturado (periodo)</div>
+      <div class="text-xl font-bold text-blue-700" x-text="'$' + fmt(periodo.total_facturado)"></div>
+    </div>
+    <div class="card bg-green-50 border border-green-100">
+      <div class="text-green-400 text-xs mb-1">Cobrado (periodo)</div>
+      <div class="text-xl font-bold text-green-700" x-text="'$' + fmt(periodo.total_cobrado)"></div>
+    </div>
+    <div class="card bg-red-50 border border-red-100">
+      <div class="text-red-400 text-xs mb-1">Gastos (periodo)</div>
+      <div class="text-xl font-bold text-red-700" x-text="'$' + fmt(periodo.total_gastos)"></div>
+    </div>
+    <div class="card" :class="(periodo.utilidad||0) >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'">
+      <div class="text-xs mb-1" :class="(periodo.utilidad||0) >= 0 ? 'text-emerald-400' : 'text-red-400'">Utilidad estimada</div>
+      <div class="text-xl font-bold" :class="(periodo.utilidad||0) >= 0 ? 'text-emerald-700' : 'text-red-700'" x-text="'$' + fmt(periodo.utilidad)"></div>
+    </div>
+    <div class="card bg-gray-50">
+      <div class="text-gray-400 text-xs mb-1">Contratos / Pagos</div>
+      <div class="text-xl font-bold text-gray-700">
+        <span x-text="periodo.num_contratos ?? 0"></span>
+        <span class="text-gray-400 text-sm"> / </span>
+        <span x-text="periodo.num_pagos ?? 0"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+
+    <!-- Métodos de pago -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-3">Métodos de pago</h2>
+      <template x-if="(periodo.metodos_pago||[]).length === 0">
+        <div class="text-gray-400 text-sm">Sin pagos en este periodo.</div>
+      </template>
+      <div class="space-y-2">
+        <template x-for="m in (periodo.metodos_pago||[])" :key="m.metodo">
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="flex justify-between text-sm mb-1">
+                <span class="font-medium text-gray-700" x-text="m.metodo"></span>
+                <span class="text-orange-600 font-semibold" x-text="'$' + fmt(m.monto)"></span>
+              </div>
+              <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div class="h-full bg-orange-400 rounded-full transition-all"
+                     :style="'width:' + pctMetodo(m.monto) + '%'"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Tendencia semanal -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 mb-3">Tendencia de cobros por semana</h2>
+      <template x-if="(periodo.tendencia_semanas||[]).length === 0">
+        <div class="text-gray-400 text-sm">Sin datos.</div>
+      </template>
+      <div class="flex items-end gap-2 h-36" x-show="(periodo.tendencia_semanas||[]).length > 0">
+        <template x-for="s in (periodo.tendencia_semanas||[])" :key="s.semana">
+          <div class="flex-1 flex flex-col items-center justify-end h-full">
+            <div class="text-xs text-gray-500 mb-1" x-text="s.cobrado > 0 ? '$' + fmt(s.cobrado) : ''"></div>
+            <div class="w-full bg-orange-400 rounded-t transition-all"
+                 :style="'height:' + barAlturaSem(s.cobrado) + '%'"></div>
+            <div class="text-xs text-gray-400 mt-1 truncate w-full text-center" x-text="s.semana.slice(5)"></div>
+          </div>
+        </template>
+      </div>
+    </div>
 
     <!-- Contratos por vencer -->
     <div class="card">
@@ -116,46 +194,283 @@
       </table>
     </div>
 
-    <!-- Ingresos por mes -->
-    <div class="card lg:col-span-2">
-      <h2 class="font-semibold text-gray-700 mb-3">Ingresos por mes (últimos 6 meses)</h2>
-      <div class="flex items-end gap-3 h-40">
-        <template x-for="m in ingresosPorMes" :key="m.mes">
-          <div class="flex-1 flex flex-col items-center justify-end h-full">
-            <div class="text-xs text-gray-500 mb-1" x-text="'$' + Number(m.ingreso).toFixed(0)"></div>
-            <div class="w-full bg-orange-400 rounded-t-md transition-all"
-                 :style="'height:' + barAltura(m.ingreso) + '%'"></div>
-            <div class="text-xs text-gray-400 mt-1" x-text="m.mes"></div>
-          </div>
-        </template>
-      </div>
+  </div>
+
+  <!-- Ingresos por mes (tendencia histórica) -->
+  <div class="card mb-5">
+    <h2 class="font-semibold text-gray-700 mb-3">Ingresos por mes (últimos 6 meses)</h2>
+    <div class="flex items-end gap-3 h-40">
+      <template x-for="m in ingresosPorMes" :key="m.mes">
+        <div class="flex-1 flex flex-col items-center justify-end h-full">
+          <div class="text-xs text-gray-500 mb-1" x-text="'$' + fmt(m.ingreso)"></div>
+          <div class="w-full bg-orange-400 rounded-t-md transition-all"
+               :style="'height:' + barAltura(m.ingreso) + '%'"></div>
+          <div class="text-xs text-gray-400 mt-1" x-text="m.mes"></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Detalle pagos del periodo -->
+  <div class="card mb-5" x-show="(periodo.pagos||[]).length > 0">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold text-gray-700">Pagos del periodo</h2>
+      <span class="text-xs text-gray-400" x-text="(periodo.pagos||[]).length + ' pagos'"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Folio</th>
+            <th class="pb-2">Fecha</th>
+            <th class="pb-2">Contrato</th>
+            <th class="pb-2">Cliente</th>
+            <th class="pb-2">Método</th>
+            <th class="pb-2 text-right">Monto</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="p in (periodo.pagos||[])" :key="p.folio">
+            <tr class="border-b last:border-0">
+              <td class="py-2 text-gray-400 text-xs" x-text="p.folio"></td>
+              <td class="py-2 text-xs" x-text="p.fecha"></td>
+              <td class="py-2 font-medium text-orange-600 text-xs" x-text="p.contrato"></td>
+              <td class="py-2 text-xs" x-text="p.cliente"></td>
+              <td class="py-2 text-xs">
+                <span class="px-2 py-0.5 bg-gray-100 rounded-full" x-text="p.metodo"></span>
+              </td>
+              <td class="py-2 text-right font-semibold text-green-700" x-text="'$' + fmt(p.monto)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Gastos -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold text-gray-700">Gastos del periodo</h2>
+      <button @click="abrirGasto()"
+        class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">
+        + Agregar gasto
+      </button>
     </div>
 
+    <template x-if="(periodo.gastos||[]).length === 0">
+      <div class="text-gray-400 text-sm py-4 text-center">No hay gastos registrados en este periodo.</div>
+    </template>
+
+    <div class="overflow-x-auto" x-show="(periodo.gastos||[]).length > 0">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Fecha</th>
+            <th class="pb-2">Concepto</th>
+            <th class="pb-2">Categoría</th>
+            <th class="pb-2 text-right">Monto</th>
+            <th class="pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="g in (periodo.gastos||[])" :key="g.id">
+            <tr class="border-b last:border-0">
+              <td class="py-2 text-xs text-gray-500" x-text="g.fecha"></td>
+              <td class="py-2" x-text="g.concepto"></td>
+              <td class="py-2">
+                <span class="px-2 py-0.5 rounded-full text-xs"
+                  :class="{
+                    'bg-blue-100 text-blue-700': g.categoria === 'salarios',
+                    'bg-yellow-100 text-yellow-700': g.categoria === 'combustible',
+                    'bg-purple-100 text-purple-700': g.categoria === 'mantenimiento',
+                    'bg-green-100 text-green-700': g.categoria === 'transporte',
+                    'bg-orange-100 text-orange-700': g.categoria === 'renta',
+                    'bg-pink-100 text-pink-700': g.categoria === 'servicios',
+                    'bg-gray-100 text-gray-600': g.categoria === 'otros',
+                  }"
+                  x-text="g.categoria"></span>
+              </td>
+              <td class="py-2 text-right font-semibold text-red-600" x-text="'$' + fmt(g.monto)"></td>
+              <td class="py-2 text-right">
+                <button @click="editarGasto(g)" class="text-xs text-gray-400 hover:text-orange-500 mr-2">✏</button>
+                <button @click="eliminarGasto(g.id)" class="text-xs text-gray-400 hover:text-red-500">✕</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+        <tfoot>
+          <tr class="border-t">
+            <td colspan="3" class="pt-2 font-semibold text-gray-700">Total gastos</td>
+            <td class="pt-2 text-right font-bold text-red-600" x-text="'$' + fmt(periodo.total_gastos)"></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   </div>
+
+  <!-- Modal gasto -->
+  <div x-show="modalGasto.abierto" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4" style="display:none">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6" @click.outside="modalGasto.abierto = false">
+      <h3 class="font-bold text-gray-800 mb-4" x-text="modalGasto.id ? 'Editar gasto' : 'Agregar gasto'"></h3>
+      <div class="space-y-3">
+        <div>
+          <label class="label">Fecha</label>
+          <input type="date" class="input" x-model="modalGasto.fecha">
+        </div>
+        <div>
+          <label class="label">Concepto</label>
+          <input type="text" class="input" placeholder="Descripción del gasto..." x-model="modalGasto.concepto">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label">Categoría</label>
+            <select class="input" x-model="modalGasto.categoria">
+              <option value="renta">Renta</option>
+              <option value="combustible">Combustible</option>
+              <option value="salarios">Salarios</option>
+              <option value="mantenimiento">Mantenimiento</option>
+              <option value="transporte">Transporte</option>
+              <option value="servicios">Servicios</option>
+              <option value="otros">Otros</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Monto ($)</label>
+            <input type="number" step="0.01" class="input" placeholder="0.00" x-model="modalGasto.monto">
+          </div>
+        </div>
+        <div>
+          <label class="label">Notas (opcional)</label>
+          <textarea class="input" rows="2" x-model="modalGasto.notas"></textarea>
+        </div>
+        <div x-show="modalGasto.error" class="text-red-600 text-sm" x-text="modalGasto.error"></div>
+      </div>
+      <div class="flex gap-3 mt-4">
+        <button @click="modalGasto.abierto = false" class="flex-1 btn-secondary">Cancelar</button>
+        <button @click="guardarGasto()" :disabled="modalGasto.guardando"
+          class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-medium transition">
+          <span x-text="modalGasto.guardando ? 'Guardando...' : 'Guardar'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
 function reportesPage() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const primerDiaMes = hoy.slice(0, 7) + '-01';
+
   return {
     resumen: {},
     porVencer: [],
     alertasDevolucion: [],
     materialesEnObra: [],
     ingresosPorMes: [],
+    periodo: {},
+    selPeriodo: 'mes',
+    rangoIni: primerDiaMes,
+    rangoFin: hoy,
+    periodos: [
+      { key: 'hoy', label: 'Hoy' },
+      { key: 'semana', label: 'Esta semana' },
+      { key: 'mes', label: 'Este mes' },
+      { key: 'año', label: 'Este año' },
+      { key: 'personalizado', label: 'Personalizado' },
+    ],
+    modalGasto: {
+      abierto: false, id: null, fecha: hoy, concepto: '', categoria: 'otros',
+      monto: '', notas: '', error: '', guardando: false,
+    },
 
     async init() {
-      this.resumen = await fetch('/api/reportes/resumen').then(r => r.json());
-      this.porVencer = await fetch('/api/reportes/contratos-por-vencer?dias=3').then(r => r.json());
-      this.alertasDevolucion = await fetch('/api/reportes/alertas-devolucion').then(r => r.json());
-      this.materialesEnObra = await fetch('/api/reportes/materiales-en-obra').then(r => r.json());
-      this.ingresosPorMes = await fetch('/api/reportes/ingresos-por-mes?meses=6').then(r => r.json());
+      await Promise.all([
+        fetch('/api/reportes/resumen').then(r => r.json()).then(d => this.resumen = d),
+        fetch('/api/reportes/contratos-por-vencer?dias=3').then(r => r.json()).then(d => this.porVencer = d),
+        fetch('/api/reportes/alertas-devolucion').then(r => r.json()).then(d => this.alertasDevolucion = d),
+        fetch('/api/reportes/materiales-en-obra').then(r => r.json()).then(d => this.materialesEnObra = d),
+        fetch('/api/reportes/ingresos-por-mes?meses=6').then(r => r.json()).then(d => this.ingresosPorMes = d),
+        this.cargarPeriodo(),
+      ]);
     },
+
+    async cargarPeriodo() {
+      let url = `/api/reportes/ingresos-periodo?periodo=${this.selPeriodo}`;
+      if (this.selPeriodo === 'personalizado' && this.rangoIni && this.rangoFin) {
+        url += `&fecha_ini=${this.rangoIni}&fecha_fin=${this.rangoFin}`;
+      }
+      this.periodo = await fetch(url).then(r => r.json());
+    },
+
+    fmt(v) { return Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
 
     barAltura(valor) {
       const max = Math.max(...this.ingresosPorMes.map(m => m.ingreso), 1);
       return Math.max((valor / max) * 100, 2);
-    }
-  }
+    },
+
+    barAlturaSem(valor) {
+      const sems = this.periodo.tendencia_semanas || [];
+      const max = Math.max(...sems.map(s => s.cobrado), 1);
+      return Math.max((valor / max) * 100, 2);
+    },
+
+    pctMetodo(monto) {
+      const total = this.periodo.total_cobrado || 1;
+      return Math.round((monto / total) * 100);
+    },
+
+    exportarExcel() {
+      let url = `/api/reportes/exportar?periodo=${this.selPeriodo}`;
+      if (this.selPeriodo === 'personalizado' && this.rangoIni && this.rangoFin) {
+        url += `&fecha_ini=${this.rangoIni}&fecha_fin=${this.rangoFin}`;
+      }
+      window.open(url, '_blank');
+    },
+
+    abrirGasto() {
+      Object.assign(this.modalGasto, {
+        abierto: true, id: null, fecha: new Date().toISOString().slice(0, 10),
+        concepto: '', categoria: 'otros', monto: '', notas: '', error: '', guardando: false,
+      });
+    },
+
+    editarGasto(g) {
+      Object.assign(this.modalGasto, {
+        abierto: true, id: g.id, fecha: g.fecha, concepto: g.concepto,
+        categoria: g.categoria, monto: g.monto, notas: g.notas, error: '', guardando: false,
+      });
+    },
+
+    async guardarGasto() {
+      if (!this.modalGasto.concepto.trim()) { this.modalGasto.error = 'El concepto es obligatorio.'; return; }
+      if (!this.modalGasto.monto || Number(this.modalGasto.monto) <= 0) { this.modalGasto.error = 'Monto inválido.'; return; }
+      this.modalGasto.guardando = true;
+      this.modalGasto.error = '';
+      const body = {
+        fecha: this.modalGasto.fecha, concepto: this.modalGasto.concepto,
+        categoria: this.modalGasto.categoria, monto: Number(this.modalGasto.monto),
+        notas: this.modalGasto.notas || null,
+      };
+      const url = this.modalGasto.id
+        ? `/api/reportes/gastos/${this.modalGasto.id}`
+        : '/api/reportes/gastos';
+      const method = this.modalGasto.id ? 'PUT' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      this.modalGasto.guardando = false;
+      if (!res.ok) { this.modalGasto.error = 'Error al guardar.'; return; }
+      this.modalGasto.abierto = false;
+      await this.cargarPeriodo();
+    },
+
+    async eliminarGasto(id) {
+      if (!confirm('¿Eliminar este gasto?')) return;
+      await fetch(`/api/reportes/gastos/${id}`, { method: 'DELETE' });
+      await this.cargarPeriodo();
+    },
+  };
 }
 </script>
 {% endblock %}

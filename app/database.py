@@ -355,6 +355,27 @@ class EventoAgenda(Base):
     contrato = relationship("Contrato")
 
 
+class CategoriaGasto(str, enum.Enum):
+    renta = "renta"
+    combustible = "combustible"
+    salarios = "salarios"
+    mantenimiento = "mantenimiento"
+    transporte = "transporte"
+    servicios = "servicios"
+    otros = "otros"
+
+
+class Gasto(Base):
+    __tablename__ = "gastos"
+    id = Column(Integer, primary_key=True, index=True)
+    fecha = Column(Date, nullable=False)
+    concepto = Column(String(300), nullable=False)
+    monto = Column(Float, nullable=False)
+    categoria = Column(String(50), default="otros")
+    notas = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -403,3 +424,5 @@ def _migrar_columnas_nuevas():
             if "motivo_lista_negra" not in cols_cli:
                 conn.execute(text("ALTER TABLE clientes ADD COLUMN motivo_lista_negra TEXT"))
             conn.commit()
+
+    # La tabla gastos se crea con create_all si no existe; no necesita ALTER TABLE.
