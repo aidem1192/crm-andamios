@@ -17,6 +17,16 @@ BASE_DIR = Path(__file__).parent.parent
 
 app = FastAPI(title="CRM Andamios y Derivados del Norte")
 
+@app.get("/debug-db")
+def debug_db():
+    import os
+    from app.database import DATABASE_URL
+    url = DATABASE_URL
+    # Ocultar contraseña
+    import re
+    safe = re.sub(r":([^@]+)@", ":***@", url)
+    return {"database_url": safe, "env_var": re.sub(r":([^@]+)@", ":***@", os.environ.get("DATABASE_URL", "NO_SET"))}
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SECRET_KEY", "3a12c49ce7759a7bf1d3e0a18fb14a5881f5d7eda9a76836a8b925cd8867e31e"),
