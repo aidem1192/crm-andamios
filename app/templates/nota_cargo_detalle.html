@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Nota de Cargo{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-6" x-data="notaCargoDetalle({{ nota_id }})">
+
+  <!-- Encabezado -->
+  <div class="flex items-center justify-between mb-6 no-print">
+    <div class="flex items-center gap-3">
+      <a href="/notas-cargo" class="text-gray-400 hover:text-gray-600 text-lg">←</a>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-800" x-text="nota ? nota.folio : 'Cargando...'"></h1>
+        <p class="text-sm text-gray-500">Nota de Cargo</p>
+      </div>
+    </div>
+    <div class="flex gap-2" x-show="nota">
+      <button @click="imprimir()"
+              class="border border-gray-300 text-gray-600 hover:bg-gray-50 font-medium px-4 py-2 rounded-xl text-sm">
+        🖨️ Imprimir
+      </button>
+      <button @click="eliminar()"
+              class="border border-red-200 text-red-500 hover:bg-red-50 font-medium px-4 py-2 rounded-xl text-sm">
+        Eliminar
+      </button>
+    </div>
+  </div>
+
+  <div x-show="cargando" class="text-center py-12 text-gray-400">Cargando...</div>
+
+  <div x-show="!cargando && nota">
+
+    <!-- Documento imprimible -->
+    <div class="card print-area" id="print-area">
+
+      <!-- Cabecera del documento -->
+      <div class="flex justify-between items-start mb-6 pb-4 border-b border-gray-200">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">NOTA DE CARGO</h2>
+          <p class="text-sm text-gray-500 mt-1">Andamios y Derivados del Norte</p>
+        </div>
+        <div class="text-right">
+          <div class="text-lg font-bold text-orange-600" x-text="nota && nota.folio"></div>
+          <div class="text-sm text-gray-500" x-text="nota && nota.fecha"></div>
+        </div>
+      </div>
+
+      <!-- Datos del cliente -->
+      <div class="mb-6">
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Cliente</div>
+        <div class="font-semibold text-gray-800 text-lg" x-text="nota && nota.cliente_nombre"></div>
+      </div>
+
+      <!-- Tabla de conceptos -->
+      <table class="w-full text-sm mb-6">
+        <thead>
+          <tr class="border-b-2 border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
+            <th class="pb-2 pr-4">Descripción</th>
+            <th class="pb-2 pr-4 text-center w-16">Cant.</th>
+            <th class="pb-2 pr-4 text-right w-28">Precio unit.</th>
+            <th class="pb-2 text-right w-28">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="l in (nota ? nota.lineas : [])" :key="l.id">
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pr-4 text-gray-800" x-text="l.concepto"></td>
+              <td class="py-2 pr-4 text-center text-gray-600" x-text="l.cantidad"></td>
+              <td class="py-2 pr-4 text-right text-gray-600"
+                  x-text="'$' + l.precio_unitario.toFixed(2)"></td>
+              <td class="py-2 text-right font-semibold text-gray-800"
+                  x-text="'$' + l.total_linea.toFixed(2)"></td>
+            </tr>
+          </template>
+        </tbody>
+        <tfoot>
+          <tr class="border-t-2 border-gray-200">
+            <td colspan="3" class="pt-3 text-right font-bold text-gray-700 pr-4">TOTAL</td>
+            <td class="pt-3 text-right font-bold text-orange-600 text-lg"
+                x-text="nota ? '$' + nota.total.toFixed(2) : ''"></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Notas -->
+      <div x-show="nota && nota.notas" class="mb-6 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+        <span class="font-medium text-gray-700">Observaciones: </span>
+        <span x-text="nota && nota.notas"></span>
+      </div>
+
+      <!-- Firmas -->
+      <div class="grid grid-cols-2 gap-12 mt-10 pt-6 border-t border-gray-200">
+        <div class="text-center">
+          <div class="border-t border-gray-400 pt-2 mt-12 text-sm text-gray-500">Firma del cliente</div>
+          <div class="text-xs text-gray-400 mt-1" x-text="nota && nota.cliente_nombre"></div>
+        </div>
+        <div class="text-center">
+          <div class="border-t border-gray-400 pt-2 mt-12 text-sm text-gray-500">Autorizado por</div>
+          <div class="text-xs text-gray-400 mt-1">Andamios y Derivados del Norte</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<style>
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; }
+  .card { box-shadow: none !important; border: none !important; }
+  nav, header, footer { display: none !important; }
+}
+</style>
+
+<script>
+function notaCargoDetalle(notaId) {
+  return {
+    nota: null,
+    cargando: true,
+
+    async init() {
+      const data = await fetch('/api/notas-cargo/' + notaId).then(r => r.json());
+      this.nota = data;
+      this.cargando = false;
+    },
+
+    imprimir() {
+      window.print();
+    },
+
+    async eliminar() {
+      if (!confirm('¿Eliminar esta nota de cargo? Esta acción no se puede deshacer.')) return;
+      await fetch('/api/notas-cargo/' + notaId, { method: 'DELETE' });
+      window.location.href = '/notas-cargo';
+    }
+  }
+}
+</script>
+{% endblock %}

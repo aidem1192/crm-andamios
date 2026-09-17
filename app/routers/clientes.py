@@ -47,7 +47,8 @@ def _cliente_dict(c: Cliente) -> dict:
 
 
 @router.get("")
-def listar_clientes(q: Optional[str] = None, lista_negra: Optional[bool] = None, db: Session = Depends(get_db)):
+def listar_clientes(q: Optional[str] = None, lista_negra: Optional[bool] = None,
+                    page: int = 1, limit: int = 100, db: Session = Depends(get_db)):
     query = db.query(Cliente)
     if q:
         query = query.filter(Cliente.nombre.ilike(f"%{q}%"))
@@ -55,7 +56,10 @@ def listar_clientes(q: Optional[str] = None, lista_negra: Optional[bool] = None,
         query = query.filter(Cliente.lista_negra == True)
     elif lista_negra is False:
         query = query.filter((Cliente.lista_negra == False) | (Cliente.lista_negra == None))
-    return [_cliente_dict(c) for c in query.order_by(Cliente.nombre).all()]
+    total = query.count()
+    offset = (page - 1) * limit
+    clientes = query.order_by(Cliente.nombre).offset(offset).limit(limit).all()
+    return {"total": total, "page": page, "limit": limit, "clientes": [_cliente_dict(c) for c in clientes]}
 
 
 @router.get("/plantilla-excel")

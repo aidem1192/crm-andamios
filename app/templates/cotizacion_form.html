@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Nueva Cotización{% endblock %}
+{% block content %}
+<div x-data="cotizacionForm()" x-init="init()">
+  <div class="flex items-center gap-3 mb-6">
+    <a href="/cotizaciones" class="text-gray-400 hover:text-orange-600">← Cotizaciones</a>
+    <h1 class="text-2xl font-bold text-gray-800">Nueva Cotización</h1>
+  </div>
+
+  <form @submit.prevent="guardar()" class="space-y-6">
+
+    <!-- Datos del cliente -->
+    <div class="card space-y-4">
+      <h2 class="font-semibold text-gray-700 text-lg border-b pb-2">Datos del Cliente</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Búsqueda de cliente -->
+        <div class="md:col-span-2 relative" x-data="{ abierto: false }">
+          <label class="label">Buscar cliente del catálogo (opcional)</label>
+          <input type="text" x-model="busqueda" @input.debounce.300ms="buscarClientes()"
+                 @focus="abierto = true" @blur.delay="abierto = false"
+                 placeholder="Escribe nombre del cliente…" class="input" />
+          <ul x-show="abierto && sugerencias.length > 0" x-cloak
+              class="absolute z-30 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 w-full max-h-48 overflow-y-auto">
+            <template x-for="cl in sugerencias" :key="cl.id">
+              <li @mousedown.prevent="seleccionarCliente(cl)"
+                  class="px-4 py-2 hover:bg-orange-50 cursor-pointer text-sm">
+                <span class="font-medium" x-text="cl.nombre"></span>
+                <span class="text-gray-400 ml-2" x-text="cl.telefono"></span>
+              </li>
+            </template>
+          </ul>
+        </div>
+
+        <div>
+          <label class="label">Nombre del cliente *</label>
+          <input x-model="form.cliente_nombre" required class="input" placeholder="Nombre completo" />
+        </div>
+        <div>
+          <label class="label">Teléfono</label>
+          <input x-model="form.cliente_telefono" class="input" placeholder="614-xxx-xxxx" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="label">Domicilio</label>
+          <input x-model="form.cliente_domicilio" class="input" placeholder="Calle, número, colonia, ciudad" />
+        </div>
+        <div>
+          <label class="label">RFC</label>
+          <input x-model="form.cliente_rfc" class="input" placeholder="RFC del cliente" />
+        </div>
+        <div>
+          <label class="label">Lugar de la obra</label>
+          <input x-model="form.lugar_obra" class="input" placeholder="Dirección donde se instalará" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Fechas y condiciones -->
+    <div class="card space-y-4">
+      <h2 class="font-semibold text-gray-700 text-lg border-b pb-2">Condiciones</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="label">Fecha de cotización *</label>
+          <input type="date" x-model="form.fecha" required class="input" />
+        </div>
+        <div>
+          <label class="label">Vigencia (días)</label>
+          <input type="number" x-model.number="form.vigencia_dias" min="1" max="90" class="input" />
+        </div>
+        <div class="flex flex-col justify-end">
+          <label class="flex items-center gap-2 cursor-pointer mt-4">
+            <input type="checkbox" x-model="form.incluye_iva" class="rounded text-orange-500" />
+            <span class="text-sm font-medium text-gray-700">Incluir IVA (16%)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conceptos -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-4 border-b pb-2">
+        <h2 class="font-semibold text-gray-700 text-lg">Conceptos</h2>
+        <div class="flex gap-2">
+          <button type="button" @click="agregarMaterial()"
+                  class="text-sm bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 font-medium">
+            + Material del catálogo
+          </button>
+          <button type="button" @click="agregarServicio()"
+                  class="text-sm bg-teal-100 text-teal-700 px-3 py-1.5 rounded-lg hover:bg-teal-200 font-medium">
+            + Servicio / Flete
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal selección de material -->
+      <div x-show="modalMaterial" x-cloak
+           class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+          <h3 class="font-bold text-gray-800 mb-4">Seleccionar Material</h3>
+          <input type="text" x-model="busqMaterial" @input.debounce.200ms="filtrarMateriales()"
+                 placeholder="Buscar material…" class="input mb-3" />
+          <ul class="max-h-60 overflow-y-auto divide-y divide-gray-100">
+            <template x-for="m in materialesFiltrados" :key="m.id">
+              <li @click="seleccionarMaterial(m)"
+                  class="px-3 py-2.5 hover:bg-orange-50 cursor-pointer flex justify-between items-center">
+                <span class="font-medium text-sm" x-text="m.nombre"></span>
+                <span class="text-orange-600 font-semibold text-sm"
+                      x-text="'$' + Number(m.precio_renta_dia).toLocaleString('es-MX', {minimumFractionDigits:2}) + '/día'"></span>
+              </li>
+            </template>
+          </ul>
+          <button type="button" @click="modalMaterial = false"
+                  class="mt-4 btn-secondary w-full">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Tabla de conceptos -->
+      <div x-show="form.lineas.length === 0" class="text-gray-400 text-sm text-center py-8">
+        Agrega materiales o servicios para cotizar.
+      </div>
+      <template x-if="form.lineas.length > 0">
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left text-gray-500 border-b">
+                <th class="pb-2 pr-2">Tipo</th>
+                <th class="pb-2 pr-2">Descripción</th>
+                <th class="pb-2 pr-2 w-24">Cantidad</th>
+                <th class="pb-2 pr-2 w-32">P. Unitario</th>
+                <th class="pb-2 pr-2 w-28 text-right">Total</th>
+                <th class="pb-2 w-8"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(l, i) in form.lineas" :key="i">
+                <tr class="border-b border-gray-100">
+                  <td class="py-2 pr-2">
+                    <span :class="l.tipo === 'material' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'"
+                          class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="l.tipo === 'material' ? 'Material' : 'Servicio'"></span>
+                  </td>
+                  <td class="py-2 pr-2">
+                    <input x-model="l.descripcion" @input="recalcular()" class="input text-sm" required />
+                  </td>
+                  <td class="py-2 pr-2">
+                    <input type="number" x-model.number="l.cantidad" @input="recalcular()"
+                           min="0.01" step="0.01" class="input text-sm text-center" />
+                  </td>
+                  <td class="py-2 pr-2">
+                    <input type="number" x-model.number="l.precio_unitario" @input="recalcular()"
+                           min="0" step="0.01" class="input text-sm text-right" />
+                  </td>
+                  <td class="py-2 pr-2 text-right font-semibold text-gray-700"
+                      x-text="'$' + (l.cantidad * l.precio_unitario).toLocaleString('es-MX', {minimumFractionDigits:2})"></td>
+                  <td class="py-2">
+                    <button type="button" @click="quitarLinea(i)"
+                            class="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+      <!-- Totales -->
+      <template x-if="form.lineas.length > 0">
+        <div class="mt-4 flex justify-end">
+          <div class="space-y-1 min-w-64 text-sm">
+            <div class="flex justify-between text-gray-600">
+              <span>Subtotal</span>
+              <span x-text="'$' + subtotal.toLocaleString('es-MX', {minimumFractionDigits:2})"></span>
+            </div>
+            <div class="flex justify-between items-center text-gray-600 gap-4">
+              <div class="flex items-center gap-1">
+                <span>Descuento</span>
+                <input type="number" x-model.number="form.descuento_pct" @input="recalcular()"
+                       min="0" max="100" step="0.5"
+                       class="w-16 border border-gray-300 rounded px-2 py-0.5 text-center text-xs" />
+                <span class="text-xs">%</span>
+              </div>
+              <span x-show="form.descuento_pct > 0"
+                    x-text="'- $' + descuentoMonto.toLocaleString('es-MX', {minimumFractionDigits:2})"></span>
+            </div>
+            <div x-show="form.incluye_iva" class="flex justify-between text-gray-600">
+              <span>IVA 16%</span>
+              <span x-text="'$' + iva.toLocaleString('es-MX', {minimumFractionDigits:2})"></span>
+            </div>
+            <div class="flex justify-between font-bold text-base text-orange-700 border-t pt-2 mt-2">
+              <span>TOTAL</span>
+              <span x-text="'$' + total.toLocaleString('es-MX', {minimumFractionDigits:2})"></span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Notas -->
+    <div class="card">
+      <h2 class="font-semibold text-gray-700 text-lg border-b pb-2 mb-4">Notas y Condiciones Especiales</h2>
+      <textarea x-model="form.notas" rows="3" class="input"
+                placeholder="Condiciones especiales, formas de pago, observaciones…"></textarea>
+    </div>
+
+    <!-- Acciones -->
+    <div class="flex flex-wrap gap-3 justify-end">
+      <a href="/cotizaciones" class="btn-secondary">Cancelar</a>
+      <button type="submit" :disabled="guardando" class="btn-primary min-w-36">
+        <span x-show="!guardando">Guardar Cotización</span>
+        <span x-show="guardando">Guardando…</span>
+      </button>
+    </div>
+
+    <p x-show="error" x-text="error" class="text-red-600 text-sm text-center"></p>
+  </form>
+</div>
+
+<script>
+function cotizacionForm() {
+  return {
+    form: {
+      cliente_id: null,
+      cliente_nombre: '', cliente_telefono: '', cliente_domicilio: '', cliente_rfc: '',
+      fecha: new Date().toISOString().slice(0, 10),
+      vigencia_dias: 15,
+      lugar_obra: '',
+      incluye_iva: true,
+      descuento_pct: 0,
+      notas: '',
+      lineas: [],
+    },
+    busqueda: '', sugerencias: [],
+    modalMaterial: false, todosLosMateriales: [], materialesFiltrados: [], busqMaterial: '',
+    subtotal: 0, descuentoMonto: 0, iva: 0, total: 0,
+    guardando: false, error: '',
+
+    async init() {
+      const hoy = new Date().toISOString().slice(0, 10);
+      this.form.fecha = hoy;
+      // Cargar catálogo de materiales
+      const r = await fetch('/api/materiales');
+      const d = await r.json();
+      this.todosLosMateriales = (d.materiales || d).filter(m => m.activo !== false);
+      this.materialesFiltrados = [...this.todosLosMateriales];
+    },
+
+    async buscarClientes() {
+      if (this.busqueda.length < 2) { this.sugerencias = []; return; }
+      const r = await fetch('/api/clientes?q=' + encodeURIComponent(this.busqueda) + '&limit=8');
+      const d = await r.json();
+      this.sugerencias = d.clientes || d;
+    },
+
+    seleccionarCliente(cl) {
+      this.form.cliente_id = cl.id;
+      this.form.cliente_nombre = cl.nombre;
+      this.form.cliente_telefono = cl.telefono || '';
+      this.form.cliente_domicilio = cl.domicilio || '';
+      this.form.cliente_rfc = cl.rfc || '';
+      this.busqueda = cl.nombre;
+      this.sugerencias = [];
+    },
+
+    filtrarMateriales() {
+      const q = this.busqMaterial.toLowerCase();
+      this.materialesFiltrados = q
+        ? this.todosLosMateriales.filter(m => m.nombre.toLowerCase().includes(q))
+        : [...this.todosLosMateriales];
+    },
+
+    agregarMaterial() {
+      this.busqMaterial = '';
+      this.materialesFiltrados = [...this.todosLosMateriales];
+      this.modalMaterial = true;
+    },
+
+    seleccionarMaterial(m) {
+      this.form.lineas.push({
+        tipo: 'material',
+        descripcion: m.nombre,
+        cantidad: 1,
+        precio_unitario: m.precio_renta_dia || 0,
+      });
+      this.recalcular();
+      this.modalMaterial = false;
+    },
+
+    agregarServicio() {
+      this.form.lineas.push({ tipo: 'servicio', descripcion: '', cantidad: 1, precio_unitario: 0 });
+      this.recalcular();
+    },
+
+    quitarLinea(i) {
+      this.form.lineas.splice(i, 1);
+      this.recalcular();
+    },
+
+    recalcular() {
+      this.subtotal = this.form.lineas.reduce((s, l) => s + (l.cantidad * l.precio_unitario), 0);
+      this.descuentoMonto = this.subtotal * (this.form.descuento_pct / 100);
+      const base = this.subtotal - this.descuentoMonto;
+      this.iva = this.form.incluye_iva ? base * 0.16 : 0;
+      this.total = base + this.iva;
+    },
+
+    async guardar() {
+      if (!this.form.cliente_nombre.trim()) { this.error = 'El nombre del cliente es requerido.'; return; }
+      if (this.form.lineas.length === 0) { this.error = 'Agrega al menos un concepto.'; return; }
+      this.guardando = true; this.error = '';
+      try {
+        const payload = {
+          ...this.form,
+          lineas: this.form.lineas.map(l => ({
+            tipo: l.tipo,
+            descripcion: l.descripcion,
+            cantidad: l.cantidad,
+            precio_unitario: l.precio_unitario,
+          })),
+        };
+        const r = await fetch('/api/cotizaciones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (!r.ok) { this.error = d.detail || 'Error al guardar.'; return; }
+        window.location.href = '/cotizaciones/' + d.id;
+      } catch(e) {
+        this.error = 'Error de conexión.';
+      } finally {
+        this.guardando = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

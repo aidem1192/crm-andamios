@@ -44,7 +44,8 @@ def generar_nota_remision(data: dict) -> Path:
                                   textColor=colors.HexColor("#888888"))
     valor_style = ParagraphStyle("Valor", parent=styles["Normal"], fontSize=11)
 
-    tipo_texto = "ENTREGA DE MATERIAL" if data["tipo"] == "entrega" else "DEVOLUCIÓN DE MATERIAL"
+    tipo_map = {"entrega": "NOTA DE ENTREGA DE MATERIAL", "salida": "NOTA DE SALIDA DE MATERIAL", "devolucion": "NOTA DE DEVOLUCIÓN DE MATERIAL"}
+    tipo_texto = tipo_map.get(data["tipo"], "NOTA DE REMISIÓN")
 
     story = []
     story.append(Paragraph("ANDAMIOS Y DERIVADOS DEL NORTE", titulo_style))

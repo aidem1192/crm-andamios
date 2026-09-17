@@ -146,6 +146,7 @@ class Contrato(Base):
     cliente = relationship("Cliente", back_populates="contratos")
     lineas = relationship("LineaContrato", back_populates="contrato", cascade="all, delete-orphan")
     pagos = relationship("Pago", back_populates="contrato", cascade="all, delete-orphan")
+    cargos_extra = relationship("CargoExtra", back_populates="contrato", cascade="all, delete-orphan")
 
 
 class LineaContrato(Base):
@@ -160,6 +161,18 @@ class LineaContrato(Base):
 
     contrato = relationship("Contrato", back_populates="lineas")
     material = relationship("Material")
+
+
+class CargoExtra(Base):
+    __tablename__ = "cargos_extra"
+    id = Column(Integer, primary_key=True, index=True)
+    contrato_id = Column(Integer, ForeignKey("contratos.id"), nullable=False)
+    concepto = Column(String(300), nullable=False)
+    monto = Column(Float, nullable=False)
+    tipo = Column(String(30), default="otro")  # danio | reposicion | otro
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    contrato = relationship("Contrato", back_populates="cargos_extra")
 
 
 class NotaRemision(Base):
@@ -256,6 +269,7 @@ class Pago(Base):
     metodo_pago_id = Column(Integer, ForeignKey("metodos_pago.id"), nullable=False)
     referencia = Column(String(200))   # número de transferencia, cheque, etc.
     notas = Column(Text)
+    tipo_gasto = Column(String(50), default="renta")   # renta | deposito | flete | cargo_extra | reposicion | otro
     created_at = Column(DateTime, default=datetime.utcnow)
 
     contrato = relationship("Contrato", back_populates="pagos")
@@ -372,8 +386,90 @@ class Gasto(Base):
     concepto = Column(String(300), nullable=False)
     monto = Column(Float, nullable=False)
     categoria = Column(String(50), default="otros")
+    metodo_pago = Column(String(50), default="efectivo")
+    referencia = Column(String(200))
     notas = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Cotizacion(Base):
+    __tablename__ = "cotizaciones"
+    id = Column(Integer, primary_key=True, index=True)
+    folio = Column(String(20), unique=True)
+    # cliente puede ser registrado o solo nombre libre
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True)
+    cliente_nombre = Column(String(200), nullable=False)
+    cliente_telefono = Column(String(30))
+    cliente_domicilio = Column(Text)
+    cliente_rfc = Column(String(20))
+    fecha = Column(Date, nullable=False)
+    vigencia_dias = Column(Integer, default=15)
+    lugar_obra = Column(Text)
+    incluye_iva = Column(Boolean, default=True)
+    descuento_pct = Column(Float, default=0.0)
+    subtotal = Column(Float, default=0.0)
+    descuento_monto = Column(Float, default=0.0)
+    iva = Column(Float, default=0.0)
+    total = Column(Float, default=0.0)
+    notas = Column(Text)
+    estado = Column(String(20), default="borrador")  # borrador | enviada | aceptada | rechazada
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    cliente = relationship("Cliente")
+    lineas = relationship("LineaCotizacion", back_populates="cotizacion", cascade="all, delete-orphan")
+
+
+class LineaCotizacion(Base):
+    __tablename__ = "lineas_cotizacion"
+    id = Column(Integer, primary_key=True, index=True)
+    cotizacion_id = Column(Integer, ForeignKey("cotizaciones.id"), nullable=False)
+    tipo = Column(String(20), default="material")   # material | servicio
+    descripcion = Column(String(300), nullable=False)
+    cantidad = Column(Float, default=1)
+    precio_unitario = Column(Float, nullable=False)
+    total_linea = Column(Float, nullable=False)
+
+    cotizacion = relationship("Cotizacion", back_populates="lineas")
+
+
+class DocumentoCliente(Base):
+    __tablename__ = "documentos_cliente"
+    id = Column(Integer, primary_key=True, index=True)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
+    tipo = Column(String(50), nullable=False)   # ine_frente | ine_reverso | comprobante_domicilio | otro
+    nombre_archivo = Column(String(300), nullable=False)
+    ruta = Column(String(500), nullable=False)  # ruta relativa a /data/uploads/docs/
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    cliente = relationship("Cliente")
+
+
+class NotaCargo(Base):
+    __tablename__ = "notas_cargo"
+    id = Column(Integer, primary_key=True, index=True)
+    folio = Column(String(20), unique=True)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
+    fecha = Column(Date, nullable=False)
+    notas = Column(Text)
+    total = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    cliente = relationship("Cliente")
+    lineas = relationship("LineaNotaCargo", back_populates="nota", cascade="all, delete-orphan")
+
+
+class LineaNotaCargo(Base):
+    __tablename__ = "lineas_nota_cargo"
+    id = Column(Integer, primary_key=True, index=True)
+    nota_id = Column(Integer, ForeignKey("notas_cargo.id"), nullable=False)
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=True)
+    concepto = Column(String(300), nullable=False)
+    cantidad = Column(Integer, default=1)
+    precio_unitario = Column(Float, nullable=False)
+    total_linea = Column(Float, nullable=False)
+
+    nota = relationship("NotaCargo", back_populates="lineas")
+    material = relationship("Material")
 
 
 def get_db():
@@ -444,4 +540,20 @@ def _migrar_columnas_nuevas():
                 conn.execute(text("ALTER TABLE clientes ADD COLUMN motivo_lista_negra TEXT"))
             conn.commit()
 
-    # La tabla gastos se crea con create_all si no existe; no necesita ALTER TABLE.
+    if "gastos" in inspector.get_table_names():
+        cols_g = [c["name"] for c in inspector.get_columns("gastos")]
+        with engine.connect() as conn:
+            if "metodo_pago" not in cols_g:
+                conn.execute(text("ALTER TABLE gastos ADD COLUMN metodo_pago VARCHAR(50) DEFAULT 'efectivo'"))
+            if "referencia" not in cols_g:
+                conn.execute(text("ALTER TABLE gastos ADD COLUMN referencia VARCHAR(200)"))
+            conn.commit()
+
+    if "pagos" in inspector.get_table_names():
+        cols_p = [c["name"] for c in inspector.get_columns("pagos")]
+        if "tipo_gasto" not in cols_p:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE pagos ADD COLUMN tipo_gasto VARCHAR(50) DEFAULT 'renta'"))
+                conn.commit()
+
+    # documentos_cliente se crea automáticamente vía create_all si no existe

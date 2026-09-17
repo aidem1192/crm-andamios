@@ -67,7 +67,12 @@
             <div x-show="c.lista_negra && c.motivo_lista_negra"
                  class="text-xs text-red-600 mt-0.5 italic" x-text="'Motivo: ' + c.motivo_lista_negra"></div>
           </div>
-          <div class="flex gap-2 shrink-0 ml-2">
+          <div class="flex gap-2 shrink-0 ml-2 flex-wrap">
+            <button @click="abrirExpediente(c)"
+                    class="text-xs font-medium px-2 py-1 rounded-lg transition"
+                    :class="expedienteCompleto(c) ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'">
+              📁 Expediente
+            </button>
             <button @click="editarCliente(c)" class="text-xs text-orange-500 hover:underline">Editar</button>
             <button x-show="!c.lista_negra" @click="abrirModalListaNegra(c)"
                     class="text-xs text-red-500 hover:underline font-medium">⛔ Lista negra</button>
@@ -76,6 +81,18 @@
           </div>
         </div>
       </template>
+    </div>
+
+    <!-- Paginación -->
+    <div x-show="totalPaginas > 1" class="flex items-center justify-between mt-4 text-sm text-gray-600">
+      <span x-text="`Mostrando ${(page-1)*limit+1}–${Math.min(page*limit, total)} de ${total} clientes`"></span>
+      <div class="flex gap-1">
+        <button @click="irPagina(page-1)" :disabled="page === 1"
+                class="px-3 py-1 rounded bg-gray-100 hover:bg-orange-100 disabled:opacity-40">← Anterior</button>
+        <span class="px-3 py-1 font-semibold" x-text="`${page} / ${totalPaginas}`"></span>
+        <button @click="irPagina(page+1)" :disabled="page === totalPaginas"
+                class="px-3 py-1 rounded bg-gray-100 hover:bg-orange-100 disabled:opacity-40">Siguiente →</button>
+      </div>
     </div>
   </div>
 
@@ -100,6 +117,101 @@
             <span x-show="modalLN.guardando">Guardando...</span>
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MODAL EXPEDIENTE ═══════════════════════════════════════════════ -->
+  <div x-show="exp.abierto" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+
+      <!-- Header -->
+      <div class="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+        <div>
+          <h2 class="font-bold text-gray-800 text-lg">📁 Expediente</h2>
+          <p class="text-sm text-gray-500" x-text="exp.nombre"></p>
+        </div>
+        <button @click="exp.abierto=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+
+      <!-- Contenido scrollable -->
+      <div class="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+
+        <!-- Sección INE -->
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Identificación (INE)</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div x-for="lado in ['ine_frente','ine_reverso']" :key="lado">
+              <template x-if="exp.docs[lado]">
+                <div class="relative rounded-xl overflow-hidden border border-gray-200 group">
+                  <template x-if="exp.docs[lado].es_imagen">
+                    <img :src="exp.docs[lado].url" class="w-full h-28 object-cover" />
+                  </template>
+                  <template x-if="!exp.docs[lado].es_imagen">
+                    <a :href="exp.docs[lado].url" target="_blank"
+                       class="flex items-center justify-center h-28 bg-red-50 text-red-600 text-sm font-medium">
+                      📄 Ver PDF
+                    </a>
+                  </template>
+                  <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs text-center py-1"
+                       x-text="lado === 'ine_frente' ? 'Frente' : 'Reverso'"></div>
+                  <button @click="eliminarDoc(lado)"
+                          class="absolute top-1 right-1 hidden group-hover:flex bg-red-600 text-white rounded-full w-5 h-5 items-center justify-center text-xs">✕</button>
+                </div>
+              </template>
+              <template x-if="!exp.docs[lado]">
+                <label class="flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition text-gray-400 text-xs text-center p-2">
+                  <span class="text-2xl mb-1">📷</span>
+                  <span x-text="lado === 'ine_frente' ? 'INE Frente' : 'INE Reverso'"></span>
+                  <input type="file" class="hidden" accept="image/*,.pdf" @change="subirDoc($event, lado)">
+                </label>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- Comprobante domicilio -->
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Comprobante de domicilio</p>
+          <template x-if="exp.docs['comprobante_domicilio']">
+            <div class="relative rounded-xl overflow-hidden border border-gray-200 group">
+              <template x-if="exp.docs['comprobante_domicilio'].es_imagen">
+                <img :src="exp.docs['comprobante_domicilio'].url" class="w-full h-32 object-cover" />
+              </template>
+              <template x-if="!exp.docs['comprobante_domicilio'].es_imagen">
+                <a :href="exp.docs['comprobante_domicilio'].url" target="_blank"
+                   class="flex items-center justify-center h-32 bg-blue-50 text-blue-600 font-medium">
+                  📄 Ver comprobante PDF
+                </a>
+              </template>
+              <button @click="eliminarDoc('comprobante_domicilio')"
+                      class="absolute top-2 right-2 hidden group-hover:flex bg-red-600 text-white rounded-full w-6 h-6 items-center justify-center text-sm">✕</button>
+            </div>
+          </template>
+          <template x-if="!exp.docs['comprobante_domicilio']">
+            <label class="flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition text-gray-400 text-sm text-center">
+              <span class="text-2xl mb-1">🏠</span>
+              <span>Subir comprobante de domicilio</span>
+              <span class="text-xs mt-0.5">(imagen o PDF)</span>
+              <input type="file" class="hidden" accept="image/*,.pdf" @change="subirDoc($event, 'comprobante_domicilio')">
+            </label>
+          </template>
+        </div>
+
+        <!-- Estado expediente -->
+        <div class="rounded-xl p-3 text-sm"
+             :class="expedienteCompletoById(exp.clienteId) ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-yellow-50 border border-yellow-200 text-yellow-700'">
+          <template x-if="expedienteCompletoById(exp.clienteId)">
+            <span>✅ Expediente completo</span>
+          </template>
+          <template x-if="!expedienteCompletoById(exp.clienteId)">
+            <span>⚠️ Faltan documentos: <span x-text="docsQuefaltan()"></span></span>
+          </template>
+        </div>
+
+        <!-- Error -->
+        <p x-show="exp.error" x-text="exp.error" class="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2"></p>
+        <div x-show="exp.subiendo" class="text-center text-orange-600 text-sm py-2">Subiendo archivo…</div>
       </div>
     </div>
   </div>
@@ -158,10 +270,14 @@
 <script>
 function clientesPage() {
   return {
-    clientes: [], q: '', filtroLN: null, modalAbierto: false, editandoId: null, error: '',
+    clientes: [], total: 0, page: 1, limit: 100,
+    q: '', filtroLN: null, modalAbierto: false, editandoId: null, error: '',
     importResult: null,
     form: { nombre: '', telefono: '', domicilio: '', rfc: '', referencias: [] },
     modalLN: { abierto: false, id: null, nombre: '', motivo: '', error: '', guardando: false },
+    exp: { abierto: false, clienteId: null, nombre: '', docs: {}, error: '', subiendo: false },
+    docsCache: {},  // { clienteId: [docs array] }
+    get totalPaginas() { return Math.ceil(this.total / this.limit); },
     async init() { await this.buscar(); },
     async importarExcel(event) {
       const archivo = event.target.files[0];
@@ -181,11 +297,20 @@ function clientesPage() {
         event.target.value = '';
       }
     },
-    async buscar() {
-      const params = new URLSearchParams({ q: this.q });
+    async buscar(resetPage = true) {
+      if (resetPage) this.page = 1;
+      const params = new URLSearchParams({ q: this.q, page: this.page, limit: this.limit });
       if (this.filtroLN === true)  params.set('lista_negra', 'true');
       if (this.filtroLN === false) params.set('lista_negra', 'false');
-      this.clientes = await fetch('/api/clientes?' + params).then(r => r.json());
+      const data = await fetch('/api/clientes?' + params).then(r => r.json());
+      this.clientes = data.clientes || [];
+      this.total = data.total || 0;
+    },
+    async irPagina(p) {
+      if (p < 1 || p > this.totalPaginas) return;
+      this.page = p;
+      await this.buscar(false);
+      window.scrollTo(0, 0);
     },
     abrirModal() {
       this.editandoId = null; this.error = '';
@@ -240,6 +365,70 @@ function clientesPage() {
       if (!confirm('¿Quitar a ' + c.nombre + ' de la lista negra?')) return;
       await fetch('/api/clientes/' + c.id + '/lista-negra', { method: 'DELETE' });
       await this.buscar();
+    },
+
+    // ── Expediente ────────────────────────────────────────────────────────
+    async abrirExpediente(c) {
+      this.exp = { abierto: true, clienteId: c.id, nombre: c.nombre, docs: {}, error: '', subiendo: false };
+      await this._cargarDocs(c.id);
+    },
+
+    async _cargarDocs(clienteId) {
+      const lista = await fetch('/api/clientes/' + clienteId + '/documentos').then(r => r.json());
+      this.docsCache[clienteId] = lista;
+      // Indexar por tipo (el más reciente gana)
+      const mapa = {};
+      lista.forEach(d => { mapa[d.tipo] = d; });
+      this.exp.docs = mapa;
+    },
+
+    async subirDoc(event, tipo) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.exp.subiendo = true; this.exp.error = '';
+      try {
+        const fd = new FormData();
+        fd.append('tipo', tipo);
+        fd.append('archivo', file);
+        const res = await fetch('/api/clientes/' + this.exp.clienteId + '/documentos', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) { this.exp.error = data.detail || 'Error al subir'; return; }
+        await this._cargarDocs(this.exp.clienteId);
+      } catch(e) {
+        this.exp.error = 'Error de conexión.';
+      } finally {
+        this.exp.subiendo = false;
+        event.target.value = '';
+      }
+    },
+
+    async eliminarDoc(tipo) {
+      const doc = this.exp.docs[tipo];
+      if (!doc || !confirm('¿Eliminar este documento?')) return;
+      await fetch('/api/clientes/' + this.exp.clienteId + '/documentos/' + doc.id, { method: 'DELETE' });
+      await this._cargarDocs(this.exp.clienteId);
+    },
+
+    expedienteCompleto(c) {
+      const cache = this.docsCache[c.id] || [];
+      const tipos = cache.map(d => d.tipo);
+      return ['ine_frente', 'ine_reverso', 'comprobante_domicilio'].every(t => tipos.includes(t));
+    },
+
+    expedienteCompletoById(id) {
+      const cache = this.docsCache[id] || [];
+      const tipos = cache.map(d => d.tipo);
+      return ['ine_frente', 'ine_reverso', 'comprobante_domicilio'].every(t => tipos.includes(t));
+    },
+
+    docsQuefaltan() {
+      const cache = this.docsCache[this.exp.clienteId] || [];
+      const tipos = cache.map(d => d.tipo);
+      const labels = { ine_frente: 'INE frente', ine_reverso: 'INE reverso', comprobante_domicilio: 'Comprobante' };
+      return ['ine_frente', 'ine_reverso', 'comprobante_domicilio']
+        .filter(t => !tipos.includes(t))
+        .map(t => labels[t])
+        .join(', ');
     },
   }
 }

@@ -17,6 +17,22 @@
          class="bg-gray-700 hover:bg-gray-900 text-white font-semibold px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm">
         📄 Descargar pagaré (.docx)
       </a>
+      <button @click="abrirNotaSalida()" x-show="c.estado === 'activo'"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition text-sm">
+        📋 Nota de Salida
+      </button>
+      <button @click="abrirNotaEntrega()" x-show="c.estado === 'activo'"
+              class="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-4 py-2 rounded-lg transition text-sm">
+        ✍️ Nota de Entrega
+      </button>
+      <button @click="abrirModalProgramar('entrega')" x-show="c.estado === 'activo'"
+              class="bg-orange-100 hover:bg-orange-200 text-orange-700 font-semibold px-4 py-2 rounded-lg transition text-sm">
+        🚚 Programar entrega
+      </button>
+      <button @click="abrirModalProgramar('recoleccion')" x-show="c.estado === 'activo'"
+              class="bg-purple-100 hover:bg-purple-200 text-purple-700 font-semibold px-4 py-2 rounded-lg transition text-sm">
+        📦 Programar recolección
+      </button>
       <button @click="abrirModalCancelar()" x-show="c.estado === 'activo'"
               class="bg-white border border-red-300 hover:bg-red-50 text-red-600 font-semibold px-4 py-2 rounded-lg transition text-sm">
         ✕ Cancelar contrato
@@ -116,6 +132,12 @@
             </template>
           </tbody>
         </table>
+        <div x-show="c.estado === 'activo'" class="mt-3 flex justify-end">
+          <button @click="abrirModalCargoExtra()"
+                  class="text-xs bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-1.5 rounded-lg transition">
+            + Cargo adicional (flete, daño, etc.)
+          </button>
+        </div>
       </div>
 
       <!-- Vigencia y logística -->
@@ -341,7 +363,8 @@
 
     <div x-show="modalNota.abierto" x-cloak class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div @click.outside="modalNota.abierto = false" class="bg-white rounded-xl shadow-lg w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
-        <h3 class="font-semibold text-gray-800 mb-4">Nueva nota de remisión</h3>
+        <h3 class="font-semibold text-gray-800 mb-4"
+            x-text="modalNota.tipo === 'salida' ? '📋 Nota de Salida de Material' : modalNota.tipo === 'entrega' ? '✍️ Nota de Entrega de Material' : 'Nota de Devolución'"></h3>
 
         <div class="space-y-3 text-sm">
           <div>
@@ -581,6 +604,39 @@
         </div>
       </div>
 
+      <!-- Cargos adicionales (daños, reposición, etc.) -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-gray-800 text-sm">🔧 Cargos adicionales</h3>
+          <button x-show="c.estado === 'activo'" @click="abrirModalCargoExtra()"
+                  class="text-xs bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-1.5 rounded-lg transition">
+            + Agregar cargo
+          </button>
+        </div>
+        <div class="space-y-2">
+          <template x-for="ce in (c.cargos_extra || [])" :key="ce.id">
+            <div class="flex justify-between items-center p-2 rounded-lg bg-red-50 border border-red-100 text-sm">
+              <div>
+                <span class="font-semibold text-red-700" x-text="'$' + Number(ce.monto).toFixed(2)"></span>
+                <span class="text-xs ml-1 px-1.5 py-0.5 rounded bg-red-200 text-red-700"
+                      x-text="{danio:'Daño', reposicion:'Reposición', flete:'Flete', otro:'Otro'}[ce.tipo] || ce.tipo"></span>
+                <div class="text-gray-600 text-xs" x-text="ce.concepto"></div>
+                <div class="text-gray-400 text-xs" x-text="ce.created_at"></div>
+              </div>
+              <button x-show="c.estado === 'activo'" @click="eliminarCargoExtra(ce.id)"
+                      class="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
+            </div>
+          </template>
+          <div x-show="!c.cargos_extra || c.cargos_extra.length === 0"
+               class="text-gray-400 text-xs text-center py-2">Sin cargos adicionales</div>
+        </div>
+        <div x-show="c.total_cargos_extra > 0"
+             class="mt-2 pt-2 border-t border-red-100 flex justify-between text-sm font-semibold">
+          <span class="text-gray-600">Total cargos adicionales:</span>
+          <span class="text-red-600" x-text="'$' + Number(c.total_cargos_extra || 0).toFixed(2)"></span>
+        </div>
+      </div>
+
       <div class="card text-center">
         <a :href="'/api/contratos/' + c.id + '/pdf'"
            class="block w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-lg transition mb-2">
@@ -625,6 +681,82 @@
       </form>
     </div>
   </div>
+
+  <!-- Modal cargo extra (daños, reposición) -->
+  <div x-show="modalCargoExtra.abierto" x-cloak class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" @click.outside="modalCargoExtra.abierto = false">
+      <h3 class="font-bold text-gray-800 mb-4">🔧 Agregar cargo adicional</h3>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="label">Tipo de cargo</label>
+          <select class="input" x-model="modalCargoExtra.tipo">
+            <option value="danio">Daño a material</option>
+            <option value="reposicion">Reposición (material perdido)</option>
+            <option value="flete">Flete</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">Descripción *</label>
+          <input type="text" class="input" x-model="modalCargoExtra.concepto"
+                 placeholder="Ej: Reparación de marco doblado, tornillos perdidos...">
+        </div>
+        <div>
+          <label class="label">Monto ($) *</label>
+          <input type="number" class="input" x-model="modalCargoExtra.monto" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div x-show="modalCargoExtra.error" class="text-red-600 text-xs" x-text="modalCargoExtra.error"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button @click="modalCargoExtra.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+          <button @click="guardarCargoExtra()"
+                  :disabled="modalCargoExtra.guardando || !modalCargoExtra.concepto || !modalCargoExtra.monto"
+                  class="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-semibold px-4 py-2 rounded-lg transition text-sm">
+            <span x-show="!modalCargoExtra.guardando">Guardar cargo</span>
+            <span x-show="modalCargoExtra.guardando">Guardando...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal programar entrega / recolección -->
+  <div x-show="modalProgramar.abierto" x-cloak class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" @click.outside="modalProgramar.abierto = false">
+      <h3 class="font-bold text-gray-800 mb-4"
+          x-text="modalProgramar.tipo === 'entrega' ? '🚚 Programar entrega' : '📦 Programar recolección'"></h3>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="label">Fecha *</label>
+          <input type="date" class="input" x-model="modalProgramar.fecha" required>
+        </div>
+        <div>
+          <label class="label">Hora <span class="text-gray-400 font-normal">(opcional)</span></label>
+          <input type="time" class="input" x-model="modalProgramar.hora">
+        </div>
+        <div>
+          <label class="label">Notas <span class="text-gray-400 font-normal">(opcional)</span></label>
+          <input type="text" class="input" x-model="modalProgramar.notas"
+                 :placeholder="modalProgramar.tipo === 'entrega' ? 'Ej: llevar andamios a la obra' : 'Ej: recoger material en bodega'">
+        </div>
+        <div x-show="modalProgramar.eventoExistente" class="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-700">
+          Ya hay una
+          <span x-text="modalProgramar.tipo === 'entrega' ? 'entrega' : 'recolección'"></span>
+          programada para este contrato. Se actualizará.
+        </div>
+        <div x-show="modalProgramar.error" class="text-red-600 text-xs" x-text="modalProgramar.error"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button @click="modalProgramar.abierto = false" class="btn-secondary text-sm">Cancelar</button>
+          <button @click="guardarProgramar()" :disabled="modalProgramar.guardando || !modalProgramar.fecha"
+                  :class="modalProgramar.tipo === 'entrega' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-purple-600 hover:bg-purple-700'"
+                  class="disabled:opacity-40 text-white font-semibold px-4 py-2 rounded-lg transition text-sm">
+            <span x-show="!modalProgramar.guardando">Guardar</span>
+            <span x-show="modalProgramar.guardando">Guardando...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -660,6 +792,8 @@ function contratoDetalle(id) {
       guardando: false,
     },
     modalCancelar: { abierto: false, motivo: '', password: '', error: '', guardando: false },
+    modalProgramar: { abierto: false, tipo: 'entrega', fecha: '', hora: '', notas: '', guardando: false, error: '', eventoExistente: null },
+    modalCargoExtra: { abierto: false, concepto: '', monto: '', tipo: 'danio', error: '', guardando: false },
     modalDevolucion: {
       abierto: false, fecha: '', recibido_por: '', observaciones: '',
       lineas: [], error: '', guardando: false,
@@ -744,10 +878,22 @@ function contratoDetalle(id) {
     },
 
     abrirModalNota() {
+      this._abrirNotaConTipo('entrega');
+    },
+
+    abrirNotaSalida() {
+      this._abrirNotaConTipo('salida');
+    },
+
+    abrirNotaEntrega() {
+      this._abrirNotaConTipo('entrega');
+    },
+
+    _abrirNotaConTipo(tipo) {
       const hoy = new Date().toISOString().slice(0, 10);
       this.modalNota = {
         abierto: true,
-        tipo: 'entrega',
+        tipo,
         fecha: hoy,
         entregado_por: '',
         recibido_por: '',
@@ -917,7 +1063,101 @@ function contratoDetalle(id) {
       } finally {
         this.modalCancelar.guardando = false;
       }
-    }
+    },
+
+    abrirModalCargoExtra() {
+      this.modalCargoExtra = { abierto: true, concepto: '', monto: '', tipo: 'danio', error: '', guardando: false };
+    },
+
+    async guardarCargoExtra() {
+      if (!this.modalCargoExtra.concepto.trim() || !this.modalCargoExtra.monto) return;
+      this.modalCargoExtra.guardando = true;
+      this.modalCargoExtra.error = '';
+      try {
+        const res = await fetch(`/api/contratos/${id}/cargos-extra`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            concepto: this.modalCargoExtra.concepto.trim(),
+            monto: parseFloat(this.modalCargoExtra.monto),
+            tipo: this.modalCargoExtra.tipo,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al guardar');
+        this.modalCargoExtra.abierto = false;
+        this.c = await fetch('/api/contratos/' + id).then(r => r.json());
+      } catch(e) {
+        this.modalCargoExtra.error = e.message;
+      } finally {
+        this.modalCargoExtra.guardando = false;
+      }
+    },
+
+    async eliminarCargoExtra(cargoId) {
+      if (!confirm('¿Eliminar este cargo adicional?')) return;
+      await fetch(`/api/contratos/${id}/cargos-extra/${cargoId}`, { method: 'DELETE' });
+      this.c = await fetch('/api/contratos/' + id).then(r => r.json());
+    },
+
+    async abrirModalProgramar(tipo) {
+      // Buscar si ya existe un evento de este tipo para el contrato
+      const mes = new Date().toISOString().slice(0, 7);
+      // Buscar en todos los meses próximos (3 meses)
+      let eventoExistente = null;
+      for (let i = 0; i < 4; i++) {
+        const d = new Date();
+        d.setMonth(d.getMonth() + i);
+        const m = d.toISOString().slice(0, 7);
+        const eventos = await fetch(`/api/agenda/eventos?mes=${m}`).then(r => r.json());
+        const encontrado = eventos.find(e => e.manual && e.contrato_id === id && e.tipo === tipo);
+        if (encontrado) { eventoExistente = encontrado; break; }
+      }
+      this.modalProgramar = {
+        abierto: true, tipo,
+        fecha: eventoExistente ? eventoExistente.fecha : '',
+        hora: eventoExistente ? eventoExistente.hora : '',
+        notas: eventoExistente ? eventoExistente.descripcion : '',
+        guardando: false, error: '',
+        eventoExistente: eventoExistente,
+      };
+    },
+
+    async guardarProgramar() {
+      if (!this.modalProgramar.fecha) return;
+      this.modalProgramar.guardando = true;
+      this.modalProgramar.error = '';
+      const tipo = this.modalProgramar.tipo;
+      const label = tipo === 'entrega' ? 'Entrega' : 'Recolección';
+      const titulo = `${label} — ${this.c.folio} (${this.c.cliente_nombre || ''})`;
+      const body = JSON.stringify({
+        titulo,
+        fecha: this.modalProgramar.fecha,
+        hora: this.modalProgramar.hora || null,
+        tipo,
+        descripcion: this.modalProgramar.notas || null,
+        contrato_id: id,
+      });
+      try {
+        let res;
+        if (this.modalProgramar.eventoExistente) {
+          res = await fetch(`/api/agenda/eventos/${this.modalProgramar.eventoExistente.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body,
+          });
+        } else {
+          res = await fetch('/api/agenda/eventos', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+          });
+        }
+        if (!res.ok) throw new Error('Error al guardar');
+        this.modalProgramar.abierto = false;
+        alert(`${label} programada para el ${this.modalProgramar.fecha}${this.modalProgramar.hora ? ' a las ' + this.modalProgramar.hora : ''}. Puedes verla en la Agenda.`);
+      } catch(e) {
+        this.modalProgramar.error = e.message;
+      } finally {
+        this.modalProgramar.guardando = false;
+      }
+    },
   }
 }
 </script>

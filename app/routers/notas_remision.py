@@ -81,7 +81,7 @@ def obtener_nota(nota_id: int, db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 def crear_nota(data: NotaRemisionCreate, db: Session = Depends(get_db)):
-    if data.tipo not in ("entrega", "devolucion"):
+    if data.tipo not in ("entrega", "devolucion", "salida"):
         raise HTTPException(status_code=400, detail="Tipo debe ser 'entrega' o 'devolucion'")
 
     contrato = db.query(Contrato).filter(Contrato.id == data.contrato_id).first()

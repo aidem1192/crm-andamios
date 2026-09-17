@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block title %}Registro de Pagos{% endblock %}
+{% block content %}
+<div x-data="pagosApp()" x-init="init()">
+
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Registro de Pagos</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Historial de todos los pagos recibidos</p>
+    </div>
+    <button @click="abrirModal()" class="btn-primary">+ Registrar Pago</button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="card mb-5 flex flex-wrap gap-3 items-center">
+    <input x-model="filtro" @input="filtrar()" placeholder="Buscar cliente, contrato…"
+           class="input max-w-xs" />
+    <select x-model="filtroTipo" @change="filtrar()" class="input max-w-xs">
+      <option value="">Todos los tipos</option>
+      <option value="renta">Renta</option>
+      <option value="deposito">Depósito en garantía</option>
+      <option value="flete">Flete</option>
+      <option value="cargo_extra">Cargo adicional</option>
+      <option value="reposicion">Reposición de material</option>
+      <option value="otro">Otro</option>
+    </select>
+    <select x-model="filtroMetodo" @change="filtrar()" class="input max-w-xs">
+      <option value="">Todos los métodos</option>
+      <template x-for="m in metodos" :key="m.id">
+        <option :value="m.nombre" x-text="m.nombre"></option>
+      </template>
+    </select>
+  </div>
+
+  <!-- Resumen rápido -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-orange-600" x-text="lista.length"></p>
+      <p class="text-xs text-gray-500 mt-1">Pagos mostrados</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-green-600"
+         x-text="'$' + lista.reduce((s,p)=>s+p.monto,0).toLocaleString('es-MX',{minimumFractionDigits:2})"></p>
+      <p class="text-xs text-gray-500 mt-1">Total recibido</p>
+    </div>
+    <div class="card text-center col-span-2 md:col-span-2 flex items-center justify-center gap-6 flex-wrap">
+      <template x-for="[tipo, total] in resumenTipos()" :key="tipo">
+        <div class="text-center">
+          <p class="text-lg font-bold text-gray-700"
+             x-text="'$' + total.toLocaleString('es-MX',{minimumFractionDigits:2})"></p>
+          <p class="text-xs text-gray-400" x-text="tipoLabel(tipo)"></p>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="card overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="text-left text-gray-500 border-b border-gray-200 text-xs uppercase tracking-wide">
+          <th class="pb-3 pr-4">Folio</th>
+          <th class="pb-3 pr-4">Fecha</th>
+          <th class="pb-3 pr-4">Cliente</th>
+          <th class="pb-3 pr-4">Contrato</th>
+          <th class="pb-3 pr-4">Tipo de gasto</th>
+          <th class="pb-3 pr-4">Método de pago</th>
+          <th class="pb-3 pr-4 text-right">Monto</th>
+          <th class="pb-3">Referencia</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="cargando">
+          <tr><td colspan="8" class="py-10 text-center text-gray-400">Cargando…</td></tr>
+        </template>
+        <template x-if="!cargando && lista.length === 0">
+          <tr><td colspan="8" class="py-10 text-center text-gray-400">No hay pagos registrados.</td></tr>
+        </template>
+        <template x-for="p in lista" :key="p.id">
+          <tr class="border-b border-gray-50 hover:bg-orange-50 transition">
+            <td class="py-3 pr-4 font-mono text-xs text-gray-500" x-text="p.folio"></td>
+            <td class="py-3 pr-4 text-gray-700" x-text="p.fecha"></td>
+            <td class="py-3 pr-4 font-medium text-gray-800" x-text="p.cliente_nombre || '—'"></td>
+            <td class="py-3 pr-4">
+              <span class="font-mono text-xs text-orange-700 bg-orange-50 px-2 py-0.5 rounded"
+                    x-text="p.contrato_folio"></span>
+            </td>
+            <td class="py-3 pr-4">
+              <span :class="tipoBadge(p.tipo_gasto)" x-text="tipoLabel(p.tipo_gasto)"></span>
+            </td>
+            <td class="py-3 pr-4 text-gray-600" x-text="p.metodo_pago"></td>
+            <td class="py-3 pr-4 text-right font-semibold text-gray-800"
+                x-text="'$' + Number(p.monto).toLocaleString('es-MX',{minimumFractionDigits:2})"></td>
+            <td class="py-3 text-gray-400 text-xs" x-text="p.referencia || '—'"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ MODAL REGISTRO ═══════════════════════════════════════════════════ -->
+  <div x-show="modal.abierto" x-cloak
+       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+
+      <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+        <h2 class="text-lg font-bold text-gray-800">Registrar Pago</h2>
+        <button @click="cerrarModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+
+      <form @submit.prevent="guardar()" class="px-6 py-5 space-y-4">
+
+        <!-- Buscar contrato -->
+        <div class="relative" x-data="{ abierto: false }">
+          <label class="label">Contrato / Cliente *</label>
+          <input type="text" x-model="modal.busqueda"
+                 @input.debounce.300ms="buscarContratos()"
+                 @focus="abierto = true" @blur.delay="abierto = false"
+                 placeholder="Buscar por cliente o folio de contrato…"
+                 class="input" required />
+          <ul x-show="abierto && modal.contratos.length > 0" x-cloak
+              class="absolute z-30 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 w-full max-h-48 overflow-y-auto">
+            <template x-for="c in modal.contratos" :key="c.id">
+              <li @mousedown.prevent="seleccionarContrato(c)"
+                  class="px-4 py-2.5 hover:bg-orange-50 cursor-pointer">
+                <p class="font-medium text-sm text-gray-800" x-text="c.cliente_nombre"></p>
+                <p class="text-xs text-gray-400">
+                  <span x-text="c.folio"></span> ·
+                  Saldo: <span class="text-orange-600 font-semibold"
+                               x-text="'$' + Number(c.saldo_pendiente || 0).toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
+                </p>
+              </li>
+            </template>
+          </ul>
+        </div>
+
+        <!-- Saldo disponible -->
+        <div x-show="modal.contrato_id" class="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm">
+          <div class="flex justify-between">
+            <span class="text-gray-600">Total contrato</span>
+            <span class="font-semibold" x-text="'$' + Number(modal.total_contrato||0).toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
+          </div>
+          <div class="flex justify-between mt-0.5">
+            <span class="text-gray-600">Saldo pendiente</span>
+            <span class="font-bold text-orange-600"
+                  x-text="'$' + Number(modal.saldo_pendiente||0).toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Fecha -->
+          <div>
+            <label class="label">Fecha *</label>
+            <input type="date" x-model="modal.fecha" required class="input" />
+          </div>
+          <!-- Monto -->
+          <div>
+            <label class="label">Monto *</label>
+            <input type="number" x-model.number="modal.monto" min="1" step="0.01"
+                   required class="input" placeholder="0.00" />
+          </div>
+        </div>
+
+        <!-- Tipo de gasto -->
+        <div>
+          <label class="label">Tipo de gasto *</label>
+          <select x-model="modal.tipo_gasto" required class="input">
+            <option value="renta">Renta de andamios</option>
+            <option value="deposito">Depósito en garantía</option>
+            <option value="flete">Flete / Transporte</option>
+            <option value="cargo_extra">Cargo adicional</option>
+            <option value="reposicion">Reposición de material</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
+        <!-- Método de pago -->
+        <div>
+          <label class="label">Método de pago *</label>
+          <div class="grid grid-cols-2 gap-2">
+            <template x-for="m in metodos" :key="m.id">
+              <label :class="modal.metodo_pago_id === m.id
+                      ? 'border-orange-400 bg-orange-50 text-orange-700'
+                      : 'border-gray-200 text-gray-600 hover:border-orange-200'"
+                     class="flex items-center gap-2 border-2 rounded-xl px-3 py-2.5 cursor-pointer transition">
+                <input type="radio" :value="m.id" x-model.number="modal.metodo_pago_id" class="hidden" />
+                <span class="text-base" x-text="metodIcon(m.nombre)"></span>
+                <span class="text-sm font-medium" x-text="m.nombre"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Referencia (condicional) -->
+        <div x-show="metodoRequiereRef()">
+          <label class="label">No. de referencia / transferencia</label>
+          <input type="text" x-model="modal.referencia" class="input"
+                 placeholder="Número de operación, folio de cheque…" />
+        </div>
+
+        <!-- Notas -->
+        <div>
+          <label class="label">Notas (opcional)</label>
+          <input type="text" x-model="modal.notas" class="input"
+                 placeholder="Observaciones adicionales…" />
+        </div>
+
+        <p x-show="modal.error" x-text="modal.error"
+           class="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2"></p>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" @click="cerrarModal()" class="btn-secondary flex-1">Cancelar</button>
+          <button type="submit" :disabled="modal.guardando" class="btn-primary flex-1">
+            <span x-show="!modal.guardando">Guardar Pago</span>
+            <span x-show="modal.guardando">Guardando…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function pagosApp() {
+  return {
+    todos: [], lista: [], metodos: [], cargando: true,
+    filtro: '', filtroTipo: '', filtroMetodo: '',
+    modal: {
+      abierto: false, busqueda: '', contratos: [],
+      contrato_id: null, total_contrato: 0, saldo_pendiente: 0,
+      fecha: new Date().toISOString().slice(0,10),
+      monto: '', tipo_gasto: 'renta', metodo_pago_id: null,
+      referencia: '', notas: '', error: '', guardando: false,
+    },
+
+    async init() {
+      const [rPagos, rMetodos] = await Promise.all([
+        fetch('/api/pagos'), fetch('/api/metodos-pago'),
+      ]);
+      this.todos  = await rPagos.json();
+      this.metodos = await rMetodos.json();
+      this.filtrar();
+      this.cargando = false;
+    },
+
+    filtrar() {
+      let d = this.todos;
+      if (this.filtro.trim()) {
+        const q = this.filtro.toLowerCase();
+        d = d.filter(p => (p.cliente_nombre||'').toLowerCase().includes(q)
+                       || (p.contrato_folio||'').toLowerCase().includes(q));
+      }
+      if (this.filtroTipo)   d = d.filter(p => p.tipo_gasto === this.filtroTipo);
+      if (this.filtroMetodo) d = d.filter(p => p.metodo_pago === this.filtroMetodo);
+      this.lista = d;
+    },
+
+    resumenTipos() {
+      const m = {};
+      this.lista.forEach(p => { m[p.tipo_gasto] = (m[p.tipo_gasto]||0) + p.monto; });
+      return Object.entries(m).sort((a,b) => b[1]-a[1]).slice(0,4);
+    },
+
+    tipoLabel(t) {
+      return { renta:'Renta', deposito:'Depósito', flete:'Flete',
+               cargo_extra:'Cargo extra', reposicion:'Reposición', otro:'Otro' }[t] || t;
+    },
+
+    tipoBadge(t) {
+      const m = {
+        renta:       'bg-blue-100 text-blue-700',
+        deposito:    'bg-purple-100 text-purple-700',
+        flete:       'bg-yellow-100 text-yellow-700',
+        cargo_extra: 'bg-orange-100 text-orange-700',
+        reposicion:  'bg-red-100 text-red-700',
+        otro:        'bg-gray-100 text-gray-600',
+      };
+      return (m[t]||m.otro) + ' px-2 py-0.5 rounded-full text-xs font-medium';
+    },
+
+    metodIcon(n) {
+      if (/efectivo/i.test(n)) return '💵';
+      if (/transfer/i.test(n)) return '🏦';
+      if (/tarjeta/i.test(n)) return '💳';
+      if (/cheque/i.test(n)) return '📝';
+      return '💰';
+    },
+
+    metodoRequiereRef() {
+      if (!this.modal.metodo_pago_id) return false;
+      const m = this.metodos.find(m => m.id === this.modal.metodo_pago_id);
+      return m && m.requiere_referencia;
+    },
+
+    abrirModal() {
+      this.modal = { ...this.modal, abierto: true, busqueda: '', contratos: [],
+        contrato_id: null, total_contrato: 0, saldo_pendiente: 0,
+        fecha: new Date().toISOString().slice(0,10),
+        monto: '', tipo_gasto: 'renta',
+        metodo_pago_id: this.metodos[0]?.id || null,
+        referencia: '', notas: '', error: '', guardando: false };
+    },
+
+    cerrarModal() { this.modal.abierto = false; },
+
+    async buscarContratos() {
+      if (this.modal.busqueda.length < 2) { this.modal.contratos = []; return; }
+      const r = await fetch('/api/contratos?q=' + encodeURIComponent(this.modal.busqueda) + '&estado=activo&limit=8');
+      const d = await r.json();
+      const lista = d.contratos || d;
+      // Traer saldo de cada uno
+      this.modal.contratos = lista.map(c => ({
+        id: c.id, folio: c.folio,
+        cliente_nombre: c.cliente_nombre || c.cliente?.nombre || '',
+        saldo_pendiente: (c.total_con_iva||0) - (c.total_pagado||0),
+        total_contrato: c.total_con_iva || 0,
+      }));
+    },
+
+    seleccionarContrato(c) {
+      this.modal.contrato_id    = c.id;
+      this.modal.busqueda       = c.cliente_nombre + ' — ' + c.folio;
+      this.modal.total_contrato = c.total_contrato;
+      this.modal.saldo_pendiente = c.saldo_pendiente;
+      this.modal.monto          = c.saldo_pendiente > 0 ? c.saldo_pendiente : '';
+      this.modal.contratos      = [];
+    },
+
+    async guardar() {
+      if (!this.modal.contrato_id) { this.modal.error = 'Selecciona un contrato.'; return; }
+      if (!this.modal.monto || this.modal.monto <= 0) { this.modal.error = 'El monto debe ser mayor a cero.'; return; }
+      if (!this.modal.metodo_pago_id) { this.modal.error = 'Selecciona un método de pago.'; return; }
+      this.modal.guardando = true; this.modal.error = '';
+      try {
+        const r = await fetch('/api/pagos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contrato_id:    this.modal.contrato_id,
+            fecha:          this.modal.fecha,
+            monto:          this.modal.monto,
+            tipo_gasto:     this.modal.tipo_gasto,
+            metodo_pago_id: this.modal.metodo_pago_id,
+            referencia:     this.modal.referencia || null,
+            notas:          this.modal.notas || null,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) { this.modal.error = d.detail || 'Error al guardar.'; return; }
+        this.cerrarModal();
+        await this.init(); // recargar lista
+      } catch(e) {
+        this.modal.error = 'Error de conexión.';
+      } finally {
+        this.modal.guardando = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

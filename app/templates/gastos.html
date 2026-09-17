@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block title %}Registro de Gastos{% endblock %}
+{% block content %}
+<div x-data="gastosApp()" x-init="init()">
+
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Registro de Gastos</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Gastos y egresos de la empresa</p>
+    </div>
+    <button @click="abrirModal()" class="btn-primary">+ Registrar Gasto</button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="card mb-5 flex flex-wrap gap-3 items-center">
+    <input x-model="filtro" @input="filtrar()" placeholder="Buscar concepto…" class="input max-w-xs" />
+    <select x-model="filtroCategoria" @change="filtrar()" class="input max-w-xs">
+      <option value="">Todas las categorías</option>
+      <option value="combustible">Combustible</option>
+      <option value="mantenimiento">Mantenimiento</option>
+      <option value="nomina">Nómina</option>
+      <option value="renta_local">Renta del local</option>
+      <option value="servicios">Servicios (luz, agua…)</option>
+      <option value="materiales">Compra de materiales</option>
+      <option value="transporte">Transporte / Flete</option>
+      <option value="administrativo">Administrativo</option>
+      <option value="otros">Otros</option>
+    </select>
+    <select x-model="filtroMetodo" @change="filtrar()" class="input max-w-xs">
+      <option value="">Todos los métodos</option>
+      <option value="efectivo">Efectivo</option>
+      <option value="transferencia">Transferencia</option>
+      <option value="tarjeta">Tarjeta</option>
+      <option value="cheque">Cheque</option>
+    </select>
+  </div>
+
+  <!-- Resumen -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-red-600"
+         x-text="'$' + lista.reduce((s,g)=>s+g.monto,0).toLocaleString('es-MX',{minimumFractionDigits:2})"></p>
+      <p class="text-xs text-gray-500 mt-1">Total gastos</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-gray-700" x-text="lista.length"></p>
+      <p class="text-xs text-gray-500 mt-1">Registros</p>
+    </div>
+    <div class="card text-center col-span-2">
+      <p class="text-sm font-semibold text-gray-600 mb-1">Por categoría</p>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 justify-center">
+        <template x-for="[cat, total] in resumenCats()" :key="cat">
+          <div class="text-xs text-gray-500">
+            <span x-text="catLabel(cat)"></span>:
+            <span class="font-semibold text-gray-700"
+                  x-text="'$' + total.toLocaleString('es-MX',{minimumFractionDigits:0})"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="card overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="text-left text-gray-500 border-b border-gray-200 text-xs uppercase tracking-wide">
+          <th class="pb-3 pr-4">Fecha</th>
+          <th class="pb-3 pr-4">Concepto</th>
+          <th class="pb-3 pr-4">Categoría</th>
+          <th class="pb-3 pr-4">Método de pago</th>
+          <th class="pb-3 pr-4">Referencia</th>
+          <th class="pb-3 pr-4 text-right">Monto</th>
+          <th class="pb-3 w-8"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="cargando">
+          <tr><td colspan="7" class="py-10 text-center text-gray-400">Cargando…</td></tr>
+        </template>
+        <template x-if="!cargando && lista.length === 0">
+          <tr><td colspan="7" class="py-10 text-center text-gray-400">No hay gastos registrados.</td></tr>
+        </template>
+        <template x-for="g in lista" :key="g.id">
+          <tr class="border-b border-gray-50 hover:bg-red-50 transition">
+            <td class="py-3 pr-4 text-gray-600" x-text="g.fecha"></td>
+            <td class="py-3 pr-4 font-medium text-gray-800" x-text="g.concepto"></td>
+            <td class="py-3 pr-4">
+              <span :class="catBadge(g.categoria)" x-text="catLabel(g.categoria)"></span>
+            </td>
+            <td class="py-3 pr-4 text-gray-600">
+              <span x-text="metodIcon(g.metodo_pago)"></span>
+              <span class="ml-1 capitalize" x-text="g.metodo_pago"></span>
+            </td>
+            <td class="py-3 pr-4 text-gray-400 text-xs" x-text="g.referencia || '—'"></td>
+            <td class="py-3 pr-4 text-right font-semibold text-red-600"
+                x-text="'$' + Number(g.monto).toLocaleString('es-MX',{minimumFractionDigits:2})"></td>
+            <td class="py-3">
+              <button @click="confirmarEliminar(g)"
+                      class="text-gray-300 hover:text-red-500 transition text-lg leading-none">🗑</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ MODAL REGISTRO ═══════════════════════════════════════════════════ -->
+  <div x-show="modal.abierto" x-cloak
+       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+
+      <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+        <h2 class="text-lg font-bold text-gray-800">Registrar Gasto</h2>
+        <button @click="modal.abierto=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+
+      <form @submit.prevent="guardar()" class="px-6 py-5 space-y-4">
+
+        <!-- Fecha y monto -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="label">Fecha *</label>
+            <input type="date" x-model="modal.fecha" required class="input" />
+          </div>
+          <div>
+            <label class="label">Monto *</label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">$</span>
+              <input type="number" x-model.number="modal.monto" min="0.01" step="0.01"
+                     required class="input pl-7" placeholder="0.00" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Concepto -->
+        <div>
+          <label class="label">Concepto *</label>
+          <input type="text" x-model="modal.concepto" required class="input"
+                 placeholder="Descripción del gasto" />
+        </div>
+
+        <!-- Categoría -->
+        <div>
+          <label class="label">Tipo de gasto *</label>
+          <div class="grid grid-cols-2 gap-2">
+            <template x-for="cat in categorias" :key="cat.valor">
+              <label :class="modal.categoria === cat.valor
+                      ? 'border-red-400 bg-red-50 text-red-700'
+                      : 'border-gray-200 text-gray-600 hover:border-red-200'"
+                     class="flex items-center gap-2 border-2 rounded-xl px-3 py-2.5 cursor-pointer transition text-sm">
+                <input type="radio" :value="cat.valor" x-model="modal.categoria" class="hidden" />
+                <span x-text="cat.icono"></span>
+                <span x-text="cat.label"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Método de pago -->
+        <div>
+          <label class="label">Método de pago *</label>
+          <div class="grid grid-cols-2 gap-2">
+            <template x-for="m in metodos" :key="m.valor">
+              <label :class="modal.metodo_pago === m.valor
+                      ? 'border-orange-400 bg-orange-50 text-orange-700'
+                      : 'border-gray-200 text-gray-600 hover:border-orange-200'"
+                     class="flex items-center gap-2 border-2 rounded-xl px-3 py-2.5 cursor-pointer transition text-sm">
+                <input type="radio" :value="m.valor" x-model="modal.metodo_pago" class="hidden" />
+                <span x-text="m.icono"></span>
+                <span x-text="m.label"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <!-- Referencia -->
+        <div x-show="modal.metodo_pago !== 'efectivo'">
+          <label class="label">No. de referencia / operación</label>
+          <input type="text" x-model="modal.referencia" class="input"
+                 placeholder="Folio, número de operación…" />
+        </div>
+
+        <!-- Notas -->
+        <div>
+          <label class="label">Notas (opcional)</label>
+          <input type="text" x-model="modal.notas" class="input"
+                 placeholder="Observaciones adicionales…" />
+        </div>
+
+        <p x-show="modal.error" x-text="modal.error"
+           class="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2"></p>
+
+        <div class="flex gap-3 pt-1">
+          <button type="button" @click="modal.abierto=false" class="btn-secondary flex-1">Cancelar</button>
+          <button type="submit" :disabled="modal.guardando" class="btn-primary flex-1">
+            <span x-show="!modal.guardando">Guardar Gasto</span>
+            <span x-show="modal.guardando">Guardando…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal eliminar -->
+  <div x-show="modalEliminar.abierto" x-cloak
+       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
+      <h3 class="font-bold text-gray-800 mb-1">¿Eliminar gasto?</h3>
+      <p class="text-sm text-gray-500 mb-4" x-text="modalEliminar.concepto"></p>
+      <div class="flex gap-3 justify-end">
+        <button @click="modalEliminar.abierto=false" class="btn-secondary">Cancelar</button>
+        <button @click="eliminar()" class="btn-danger">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function gastosApp() {
+  return {
+    todos: [], lista: [], cargando: true,
+    filtro: '', filtroCategoria: '', filtroMetodo: '',
+
+    categorias: [
+      { valor:'combustible',   label:'Combustible',   icono:'⛽' },
+      { valor:'mantenimiento', label:'Mantenimiento',  icono:'🔧' },
+      { valor:'nomina',        label:'Nómina',         icono:'👷' },
+      { valor:'renta_local',   label:'Renta local',    icono:'🏢' },
+      { valor:'servicios',     label:'Servicios',      icono:'💡' },
+      { valor:'materiales',    label:'Materiales',     icono:'📦' },
+      { valor:'transporte',    label:'Transporte',     icono:'🚛' },
+      { valor:'administrativo',label:'Administrativo', icono:'📋' },
+      { valor:'otros',         label:'Otros',          icono:'📎' },
+    ],
+    metodos: [
+      { valor:'efectivo',     label:'Efectivo',      icono:'💵' },
+      { valor:'transferencia',label:'Transferencia', icono:'🏦' },
+      { valor:'tarjeta',      label:'Tarjeta',       icono:'💳' },
+      { valor:'cheque',       label:'Cheque',        icono:'📝' },
+    ],
+
+    modal: {
+      abierto:false, fecha: new Date().toISOString().slice(0,10),
+      concepto:'', monto:'', categoria:'otros', metodo_pago:'efectivo',
+      referencia:'', notas:'', error:'', guardando:false,
+    },
+    modalEliminar: { abierto:false, id:null, concepto:'' },
+
+    async init() {
+      this.cargando = true;
+      const r = await fetch('/api/gastos');
+      this.todos = await r.json();
+      this.filtrar();
+      this.cargando = false;
+    },
+
+    filtrar() {
+      let d = this.todos;
+      if (this.filtro.trim()) {
+        const q = this.filtro.toLowerCase();
+        d = d.filter(g => g.concepto.toLowerCase().includes(q));
+      }
+      if (this.filtroCategoria) d = d.filter(g => g.categoria === this.filtroCategoria);
+      if (this.filtroMetodo)    d = d.filter(g => g.metodo_pago === this.filtroMetodo);
+      this.lista = d;
+    },
+
+    resumenCats() {
+      const m = {};
+      this.lista.forEach(g => { m[g.categoria] = (m[g.categoria]||0) + g.monto; });
+      return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,4);
+    },
+
+    catLabel(v) {
+      return this.categorias.find(c=>c.valor===v)?.label || v;
+    },
+
+    catBadge(v) {
+      const m = {
+        combustible:'bg-yellow-100 text-yellow-700', mantenimiento:'bg-blue-100 text-blue-700',
+        nomina:'bg-green-100 text-green-700', renta_local:'bg-purple-100 text-purple-700',
+        servicios:'bg-cyan-100 text-cyan-700', materiales:'bg-orange-100 text-orange-700',
+        transporte:'bg-red-100 text-red-700', administrativo:'bg-gray-100 text-gray-600',
+        otros:'bg-gray-100 text-gray-500',
+      };
+      return (m[v]||m.otros) + ' px-2 py-0.5 rounded-full text-xs font-medium';
+    },
+
+    metodIcon(v) {
+      return this.metodos.find(m=>m.valor===v)?.icono || '💰';
+    },
+
+    abrirModal() {
+      this.modal = {
+        abierto:true, fecha: new Date().toISOString().slice(0,10),
+        concepto:'', monto:'', categoria:'otros', metodo_pago:'efectivo',
+        referencia:'', notas:'', error:'', guardando:false,
+      };
+    },
+
+    async guardar() {
+      if (!this.modal.concepto.trim()) { this.modal.error='El concepto es requerido.'; return; }
+      if (!this.modal.monto || this.modal.monto<=0) { this.modal.error='El monto debe ser mayor a cero.'; return; }
+      this.modal.guardando=true; this.modal.error='';
+      try {
+        const r = await fetch('/api/gastos', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            fecha: this.modal.fecha, concepto: this.modal.concepto,
+            monto: this.modal.monto, categoria: this.modal.categoria,
+            metodo_pago: this.modal.metodo_pago,
+            referencia: this.modal.referencia || null,
+            notas: this.modal.notas || null,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) { this.modal.error = d.detail||'Error al guardar.'; return; }
+        this.modal.abierto = false;
+        await this.init();
+      } catch(e) {
+        this.modal.error = 'Error de conexión.';
+      } finally { this.modal.guardando=false; }
+    },
+
+    confirmarEliminar(g) {
+      this.modalEliminar = { abierto:true, id:g.id, concepto:g.concepto };
+    },
+
+    async eliminar() {
+      await fetch('/api/gastos/'+this.modalEliminar.id, { method:'DELETE' });
+      this.modalEliminar.abierto = false;
+      await this.init();
+    },
+  };
+}
+</script>
+{% endblock %}

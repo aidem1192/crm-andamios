@@ -79,6 +79,7 @@ class PagoCreate(BaseModel):
     metodo_pago_id: int
     referencia: Optional[str] = None
     notas: Optional[str] = None
+    tipo_gasto: Optional[str] = "renta"
 
 
 def _siguiente_folio_pago(db: Session) -> str:
@@ -96,6 +97,21 @@ def _actualizar_estado_pago(contrato: Contrato, db: Session):
         contrato.estado_pago = "parcial"
     else:
         contrato.estado_pago = "pendiente"
+
+
+@router.get("/api/pagos")
+def listar_todos_pagos(db: Session = Depends(get_db)):
+    pagos = db.query(Pago).order_by(Pago.fecha.desc(), Pago.id.desc()).limit(200).all()
+    return [{
+        "id": p.id, "folio": p.folio, "fecha": str(p.fecha),
+        "monto": p.monto,
+        "tipo_gasto": p.tipo_gasto or "renta",
+        "metodo_pago": p.metodo_pago.nombre if p.metodo_pago else "",
+        "referencia": p.referencia or "",
+        "notas": p.notas or "",
+        "contrato_folio": p.contrato.folio if p.contrato else "",
+        "cliente_nombre": p.contrato.cliente.nombre if p.contrato and p.contrato.cliente else "",
+    } for p in pagos]
 
 
 @router.get("/api/contratos/{contrato_id}/pagos")
@@ -147,6 +163,7 @@ def registrar_pago(data: PagoCreate, db: Session = Depends(get_db)):
         metodo_pago_id=data.metodo_pago_id,
         referencia=data.referencia,
         notas=data.notas,
+        tipo_gasto=data.tipo_gasto or "renta",
     )
     db.add(pago)
     db.flush()

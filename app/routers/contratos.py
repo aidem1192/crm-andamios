@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime
-from app.database import get_db, Contrato, LineaContrato, Cliente, Material, Usuario
+from app.database import get_db, Contrato, LineaContrato, Cliente, Material, Usuario, CargoExtra
 from app.services.numero_a_letra import numero_a_letra
 from app.services.devolucion import calcular_devolucion
 from app.auth import verify_password, log_audit
@@ -23,6 +23,12 @@ class LineaContratoSchema(BaseModel):
     precio_unitario: float
 
 
+class CargoExtraSchema(BaseModel):
+    concepto: str
+    monto: float
+    tipo: str = "otro"
+
+
 class ContratoCreate(BaseModel):
     cliente_id: int
     fecha_inicio: date
@@ -35,6 +41,7 @@ class ContratoCreate(BaseModel):
     notas: Optional[str] = None
     incluye_iva: bool = True
     lineas: List[LineaContratoSchema]
+    cargos_extra: List[CargoExtraSchema] = []
 
 
 def _calcular_totales(lineas_data: list, descuento_pct: float, incluye_iva: bool = True):
@@ -122,6 +129,12 @@ def obtener_contrato(contrato_id: int, db: Session = Depends(get_db)):
         "fecha_devolucion": c.fecha_devolucion.isoformat() if c.fecha_devolucion else None,
         "dia_extra_cobrado": c.dia_extra_cobrado,
         "lineas": lineas,
+        "cargos_extra": [
+            {"id": ce.id, "concepto": ce.concepto, "monto": ce.monto,
+             "tipo": ce.tipo, "created_at": str(ce.created_at)[:10]}
+            for ce in c.cargos_extra
+        ],
+        "total_cargos_extra": round(sum(ce.monto for ce in c.cargos_extra), 2),
     }
 
 
@@ -213,6 +226,15 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
             total_linea=l["cantidad"] * l["precio_unitario"],
         )
         db.add(linea)
+
+    for ce in data.cargos_extra:
+        cargo = CargoExtra(
+            contrato_id=contrato.id,
+            concepto=ce.concepto,
+            monto=ce.monto,
+            tipo=ce.tipo,
+        )
+        db.add(cargo)
 
     db.commit()
     db.refresh(contrato)
@@ -410,3 +432,59 @@ def registrar_devolucion(contrato_id: int, body: DevolucionBody, db: Session = D
         "estado": c.estado,
         "total_con_iva_final": c.total_con_iva,
     }
+
+
+# ─── Cargos extra ─────────────────────────────────────────────────────────────
+
+class CargoExtraIn(BaseModel):
+    concepto: str
+    monto: float
+    tipo: str = "otro"  # danio | reposicion | otro
+
+
+@router.get("/{contrato_id}/cargos-extra")
+def listar_cargos_extra(contrato_id: int, db: Session = Depends(get_db)):
+    c = db.query(Contrato).filter(Contrato.id == contrato_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    return [
+        {"id": ce.id, "concepto": ce.concepto, "monto": ce.monto,
+         "tipo": ce.tipo, "created_at": str(ce.created_at)[:10]}
+        for ce in c.cargos_extra
+    ]
+
+
+@router.post("/{contrato_id}/cargos-extra", status_code=201)
+def agregar_cargo_extra(contrato_id: int, body: CargoExtraIn, request: Request,
+                        db: Session = Depends(get_db)):
+    c = db.query(Contrato).filter(Contrato.id == contrato_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    ce = CargoExtra(
+        contrato_id=contrato_id,
+        concepto=body.concepto.strip(),
+        monto=round(body.monto, 2),
+        tipo=body.tipo,
+    )
+    db.add(ce)
+    log_audit(db, request, "cargo_extra", "contratos", contrato_id,
+              f"Cargo extra: {body.concepto} ${body.monto:.2f}")
+    db.commit()
+    db.refresh(ce)
+    return {"id": ce.id, "concepto": ce.concepto, "monto": ce.monto, "tipo": ce.tipo}
+
+
+@router.delete("/{contrato_id}/cargos-extra/{cargo_id}")
+def eliminar_cargo_extra(contrato_id: int, cargo_id: int, request: Request,
+                         db: Session = Depends(get_db)):
+    ce = db.query(CargoExtra).filter(
+        CargoExtra.id == cargo_id,
+        CargoExtra.contrato_id == contrato_id,
+    ).first()
+    if not ce:
+        raise HTTPException(status_code=404, detail="Cargo no encontrado")
+    log_audit(db, request, "eliminar_cargo_extra", "contratos", contrato_id,
+              f"Eliminado cargo: {ce.concepto} ${ce.monto:.2f}")
+    db.delete(ce)
+    db.commit()
+    return {"ok": True}

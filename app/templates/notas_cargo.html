@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Notas de Cargo{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-6" x-data="notasCargo()">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Notas de Cargo</h1>
+      <p class="text-sm text-gray-500 mt-1">Cobros por venta de material dañado, perdido o reposición</p>
+    </div>
+    <a href="/notas-cargo/nueva"
+       class="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-xl text-sm">
+      + Nueva Nota de Cargo
+    </a>
+  </div>
+
+  <!-- Estado de carga -->
+  <div x-show="cargando" class="text-center py-12 text-gray-400">Cargando...</div>
+
+  <!-- Lista vacía -->
+  <div x-show="!cargando && notas.length === 0"
+       class="card text-center py-16 text-gray-400">
+    <div class="text-5xl mb-3">📄</div>
+    <p class="font-medium">No hay notas de cargo registradas</p>
+    <a href="/notas-cargo/nueva" class="mt-4 inline-block text-orange-500 hover:underline text-sm">
+      Crear primera nota de cargo
+    </a>
+  </div>
+
+  <!-- Tabla -->
+  <div x-show="!cargando && notas.length > 0" class="card overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-100 text-left text-gray-500 text-xs uppercase tracking-wide">
+          <th class="pb-3 pr-4">Folio</th>
+          <th class="pb-3 pr-4">Fecha</th>
+          <th class="pb-3 pr-4">Cliente</th>
+          <th class="pb-3 pr-4 text-right">Total</th>
+          <th class="pb-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="n in notas" :key="n.id">
+          <tr class="border-b border-gray-50 hover:bg-orange-50/40 cursor-pointer"
+              @click="window.location.href='/notas-cargo/'+n.id">
+            <td class="py-3 pr-4 font-mono font-semibold text-orange-600" x-text="n.folio"></td>
+            <td class="py-3 pr-4 text-gray-600" x-text="n.fecha"></td>
+            <td class="py-3 pr-4 font-medium text-gray-800" x-text="n.cliente_nombre"></td>
+            <td class="py-3 pr-4 text-right font-semibold text-gray-800"
+                x-text="'$' + n.total.toFixed(2)"></td>
+            <td class="py-3 text-right">
+              <a :href="'/notas-cargo/'+n.id"
+                 class="text-orange-500 hover:text-orange-700 text-xs font-medium" @click.stop>
+                Ver →
+              </a>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function notasCargo() {
+  return {
+    notas: [],
+    cargando: true,
+    async init() {
+      const data = await fetch('/api/notas-cargo').then(r => r.json());
+      this.notas = data;
+      this.cargando = false;
+    }
+  }
+}
+</script>
+{% endblock %}

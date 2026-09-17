@@ -175,6 +175,38 @@
         + Agregar material
       </button>
       <p x-show="form.lineas.length >= 9" class="text-xs text-gray-400">Máximo 9 renglones por contrato.</p>
+
+      <!-- Cargos adicionales (flete, daño, etc.) -->
+      <div class="mt-4 border-t pt-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium text-gray-700">Cargos adicionales</span>
+          <button type="button" @click="agregarCargo()"
+                  class="text-sm text-orange-500 hover:text-orange-700 font-medium">
+            + Flete / daño / reposición
+          </button>
+        </div>
+        <template x-for="(cargo, ci) in form.cargos_extra" :key="ci">
+          <div class="flex gap-2 mb-2 items-center">
+            <select class="input text-sm w-32" x-model="cargo.tipo">
+              <option value="flete">Flete</option>
+              <option value="danio">Daño</option>
+              <option value="reposicion">Reposición</option>
+              <option value="otro">Otro</option>
+            </select>
+            <input type="text" class="input text-sm flex-1" x-model="cargo.concepto" placeholder="Descripción">
+            <div class="relative w-28">
+              <span class="absolute left-3 top-2 text-gray-400 text-sm">$</span>
+              <input type="number" class="input text-sm pl-6" x-model.number="cargo.monto"
+                     min="0" step="0.01" placeholder="0.00" @change="calcularTotales()">
+            </div>
+            <button type="button" @click="form.cargos_extra.splice(ci,1); calcularTotales()"
+                    class="text-red-400 hover:text-red-600 text-lg leading-none">✕</button>
+          </div>
+        </template>
+        <div x-show="form.cargos_extra.length > 0" class="text-right text-sm font-semibold text-gray-700 mt-1">
+          Total cargos: $<span x-text="form.cargos_extra.reduce((s,c)=>s+(+c.monto||0),0).toFixed(2)"></span>
+        </div>
+      </div>
     </div>
 
     <!-- SECCIÓN 3: FECHAS Y VIGENCIA -->
@@ -316,6 +348,7 @@ function contratoForm() {
       descuento_pct: 0,
       pin_descuento: '',
       incluye_iva: true,
+      cargos_extra: [],
     },
     clienteBusqueda: '',
     clientesSugeridos: [],
@@ -344,9 +377,10 @@ function contratoForm() {
         this.clienteDropdownAbierto = false;
         return;
       }
-      const res = await fetch('/api/clientes?q=' + encodeURIComponent(this.clienteBusqueda)).then(r => r.json());
-      this.clientesSugeridos = res;
-      this.clienteDropdownAbierto = res.length > 0;
+      const res = await fetch('/api/clientes?q=' + encodeURIComponent(this.clienteBusqueda) + '&limit=20').then(r => r.json());
+      const lista = res.clientes || res;
+      this.clientesSugeridos = lista;
+      this.clienteDropdownAbierto = lista.length > 0;
     },
 
     seleccionarCliente(c) {
@@ -430,6 +464,10 @@ function contratoForm() {
       }
     },
 
+    agregarCargo() {
+      this.form.cargos_extra.push({ tipo: 'flete', concepto: '', monto: 0 });
+    },
+
     verificarPin() {
       // Validación real ocurre en el backend; aquí solo indicador visual
       this.pinError = false;
@@ -478,6 +516,11 @@ function contratoForm() {
             material_id: l.material_id,
             cantidad: l.cantidad,
             precio_unitario: l.precio_unitario,
+          })),
+          cargos_extra: this.form.cargos_extra.filter(c => c.concepto && c.monto > 0).map(c => ({
+            tipo: c.tipo,
+            concepto: c.concepto,
+            monto: c.monto,
           })),
         };
 

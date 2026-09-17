@@ -9,9 +9,12 @@ import os
 
 from app.database import init_db
 from app.auth import get_session_user
-from app.routers import clientes, materiales, contratos, reportes, notas_remision, rh, pagos
+from app.routers import clientes, materiales, contratos, reportes, notas_remision, rh, pagos, notas_cargo as notas_cargo_router
 from app.routers import config as config_router
 from app.routers import agenda as agenda_router
+from app.routers import cotizaciones as cotizaciones_router
+from app.routers import gastos as gastos_router
+from app.routers import documentos as documentos_router
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -57,6 +60,10 @@ app.include_router(rh.router)
 app.include_router(pagos.router)
 app.include_router(config_router.router)
 app.include_router(agenda_router.router)
+app.include_router(notas_cargo_router.router)
+app.include_router(cotizaciones_router.router)
+app.include_router(gastos_router.router)
+app.include_router(documentos_router.router)
 
 
 @app.on_event("startup")
@@ -234,6 +241,64 @@ def page_agenda(request: Request):
     if redir:
         return redir
     return templates.TemplateResponse(request=request, name="agenda.html", context=_ctx(request))
+
+
+@app.get("/notas-cargo")
+def page_notas_cargo(request: Request):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="notas_cargo.html", context=_ctx(request))
+
+
+@app.get("/notas-cargo/nueva")
+def page_nueva_nota_cargo(request: Request):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="nota_cargo_form.html", context=_ctx(request))
+
+
+@app.get("/notas-cargo/{nota_id}")
+def page_nota_cargo_detalle(request: Request, nota_id: int):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="nota_cargo_detalle.html",
+                                       context=_ctx(request, {"nota_id": nota_id}))
+
+
+@app.get("/gastos")
+def page_gastos(request: Request):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="gastos.html", context=_ctx(request))
+
+
+@app.get("/cotizaciones")
+def page_cotizaciones(request: Request):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="cotizaciones.html", context=_ctx(request))
+
+
+@app.get("/cotizaciones/nueva")
+def page_nueva_cotizacion(request: Request):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="cotizacion_form.html", context=_ctx(request))
+
+
+@app.get("/cotizaciones/{cotizacion_id}")
+def page_cotizacion_detalle(request: Request, cotizacion_id: int):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="cotizacion_detalle.html",
+                                       context=_ctx(request, {"cotizacion_id": cotizacion_id}))
 
 
 @app.get("/configuracion")

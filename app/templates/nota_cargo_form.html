@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Nueva Nota de Cargo{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-6" x-data="notaCargoForm()">
+
+  <div class="flex items-center gap-3 mb-6">
+    <a href="/notas-cargo" class="text-gray-400 hover:text-gray-600 text-lg">←</a>
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Nueva Nota de Cargo</h1>
+      <p class="text-sm text-gray-500">Venta de material dañado, perdido o reposición</p>
+    </div>
+  </div>
+
+  <div x-show="error" class="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm"
+       x-text="error"></div>
+
+  <!-- Cliente -->
+  <div class="card mb-4">
+    <h2 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+      <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">1</span>
+      Cliente
+    </h2>
+    <div class="relative">
+      <input type="text" class="input" placeholder="Buscar cliente por nombre..."
+             x-model="clienteBusqueda"
+             @input="buscarClientes()"
+             @focus="dropdownAbierto = true"
+             autocomplete="off">
+      <div x-show="dropdownAbierto && sugeridos.length > 0"
+           @click.outside="dropdownAbierto = false"
+           class="absolute z-20 bg-white border border-gray-200 rounded-xl shadow-lg w-full mt-1 max-h-48 overflow-y-auto">
+        <template x-for="c in sugeridos" :key="c.id">
+          <div class="px-4 py-2.5 hover:bg-orange-50 cursor-pointer"
+               @click="seleccionarCliente(c)">
+            <div class="font-medium text-sm" x-text="c.nombre"></div>
+            <div class="text-xs text-gray-400" x-text="c.telefono"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+    <div x-show="form.cliente_id" class="mt-2 text-sm text-green-600 font-medium"
+         x-text="'✓ ' + form.cliente_nombre"></div>
+  </div>
+
+  <!-- Fecha -->
+  <div class="card mb-4">
+    <h2 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+      <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">2</span>
+      Fecha
+    </h2>
+    <input type="date" class="input w-48" x-model="form.fecha">
+  </div>
+
+  <!-- Materiales / conceptos -->
+  <div class="card mb-4">
+    <h2 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+      <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">3</span>
+      Materiales / Conceptos
+    </h2>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm mb-3">
+        <thead>
+          <tr class="text-left text-xs text-gray-400 border-b border-gray-100">
+            <th class="pb-2 pr-2">Material / Descripción</th>
+            <th class="pb-2 pr-2 w-20 text-center">Cant.</th>
+            <th class="pb-2 pr-2 w-32">Precio unit.</th>
+            <th class="pb-2 pr-2 w-28 text-right">Total</th>
+            <th class="pb-2 w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(linea, i) in form.lineas" :key="i">
+            <tr class="border-b border-gray-50">
+              <td class="py-1.5 pr-2">
+                <div class="relative" x-data="{ open: false }">
+                  <input type="text" class="input text-sm"
+                         :value="linea.concepto"
+                         @input="linea.concepto = $event.target.value; buscarMateriales($event.target.value, i); open = true"
+                         @focus="open = true"
+                         placeholder="Buscar material o escribir descripción..."
+                         autocomplete="off">
+                  <div x-show="open && materialesFiltrados.length > 0 && lineaActiva === i"
+                       @click.outside="open = false"
+                       class="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-full mt-1 max-h-40 overflow-y-auto">
+                    <template x-for="m in materialesFiltrados" :key="m.id">
+                      <div class="px-3 py-2 hover:bg-orange-50 cursor-pointer"
+                           @click="seleccionarMaterial(m, i); open = false">
+                        <div class="font-medium text-sm" x-text="m.nombre"></div>
+                        <div class="text-xs text-gray-400"
+                             x-text="'Precio venta: $' + (m.precio_venta || 0)"></div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </td>
+              <td class="py-1.5 pr-2">
+                <input type="number" class="input text-sm text-center" x-model.number="linea.cantidad"
+                       min="1" @change="calcularTotal()" placeholder="1">
+              </td>
+              <td class="py-1.5 pr-2">
+                <div class="relative">
+                  <span class="absolute left-3 top-2 text-gray-400">$</span>
+                  <input type="number" class="input text-sm pl-6" x-model.number="linea.precio_unitario"
+                         step="0.01" min="0" @change="calcularTotal()" placeholder="0.00">
+                </div>
+              </td>
+              <td class="py-1.5 pr-2 text-right font-semibold text-gray-700"
+                  x-text="'$' + (linea.cantidad * linea.precio_unitario).toFixed(2)"></td>
+              <td class="py-1.5">
+                <button type="button" @click="form.lineas.splice(i,1); calcularTotal()"
+                        class="text-red-400 hover:text-red-600 text-lg leading-none">✕</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <button type="button" @click="agregarLinea()"
+            class="text-sm text-orange-500 hover:text-orange-700 font-medium">
+      + Agregar línea
+    </button>
+  </div>
+
+  <!-- Notas -->
+  <div class="card mb-6">
+    <h2 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+      <span class="bg-orange-100 text-orange-600 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">4</span>
+      Notas (opcional)
+    </h2>
+    <textarea class="input" rows="2" x-model="form.notas"
+              placeholder="Descripción del daño, observaciones..."></textarea>
+  </div>
+
+  <!-- Total y guardar -->
+  <div class="card">
+    <div class="flex justify-between items-center mb-4">
+      <span class="text-lg font-bold text-gray-700">Total</span>
+      <span class="text-2xl font-bold text-orange-600"
+            x-text="'$' + total.toFixed(2)"></span>
+    </div>
+    <button type="button" @click="guardar()"
+            :disabled="guardando || !form.cliente_id || form.lineas.length === 0"
+            class="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl">
+      <span x-show="!guardando">Guardar Nota de Cargo</span>
+      <span x-show="guardando">Guardando...</span>
+    </button>
+  </div>
+
+</div>
+
+<script>
+function notaCargoForm() {
+  return {
+    form: {
+      cliente_id: null,
+      cliente_nombre: '',
+      fecha: new Date().toISOString().split('T')[0],
+      notas: '',
+      lineas: [{ material_id: null, concepto: '', cantidad: 1, precio_unitario: 0 }],
+    },
+    clienteBusqueda: '',
+    sugeridos: [],
+    dropdownAbierto: false,
+    materialesTodos: [],
+    materialesFiltrados: [],
+    lineaActiva: null,
+    total: 0,
+    guardando: false,
+    error: '',
+
+    async init() {
+      const mats = await fetch('/api/materiales').then(r => r.json());
+      this.materialesTodos = mats;
+    },
+
+    async buscarClientes() {
+      if (this.clienteBusqueda.length < 2) { this.sugeridos = []; return; }
+      const data = await fetch('/api/clientes?q=' + encodeURIComponent(this.clienteBusqueda) + '&limit=20').then(r => r.json());
+      this.sugeridos = data.clientes || data;
+    },
+
+    seleccionarCliente(c) {
+      this.form.cliente_id = c.id;
+      this.form.cliente_nombre = c.nombre;
+      this.clienteBusqueda = c.nombre;
+      this.sugeridos = [];
+      this.dropdownAbierto = false;
+    },
+
+    buscarMateriales(q, i) {
+      this.lineaActiva = i;
+      if (!q || q.length < 2) { this.materialesFiltrados = []; return; }
+      const ql = q.toLowerCase();
+      this.materialesFiltrados = this.materialesTodos.filter(m => m.nombre.toLowerCase().includes(ql)).slice(0, 10);
+    },
+
+    seleccionarMaterial(m, i) {
+      this.form.lineas[i].material_id = m.id;
+      this.form.lineas[i].concepto = m.nombre;
+      this.form.lineas[i].precio_unitario = m.precio_venta || 0;
+      this.materialesFiltrados = [];
+      this.calcularTotal();
+    },
+
+    agregarLinea() {
+      this.form.lineas.push({ material_id: null, concepto: '', cantidad: 1, precio_unitario: 0 });
+    },
+
+    calcularTotal() {
+      this.total = this.form.lineas.reduce((s, l) => s + (l.cantidad * l.precio_unitario), 0);
+    },
+
+    async guardar() {
+      this.error = '';
+      if (!this.form.cliente_id) { this.error = 'Selecciona un cliente.'; return; }
+      const lineasValidas = this.form.lineas.filter(l => l.concepto && l.cantidad > 0 && l.precio_unitario > 0);
+      if (lineasValidas.length === 0) { this.error = 'Agrega al menos un material o concepto con monto mayor a 0.'; return; }
+
+      this.guardando = true;
+      try {
+        const body = {
+          cliente_id: this.form.cliente_id,
+          fecha: this.form.fecha,
+          notas: this.form.notas,
+          lineas: lineasValidas.map(l => ({
+            material_id: l.material_id || null,
+            concepto: l.concepto,
+            cantidad: l.cantidad,
+            precio_unitario: l.precio_unitario,
+          })),
+        };
+        const res = await fetch('/api/notas-cargo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error al guardar');
+        window.location.href = '/notas-cargo/' + data.id;
+      } catch(e) {
+        this.error = e.message;
+      } finally {
+        this.guardando = false;
+      }
+    }
+  }
+}
+</script>
+{% endblock %}
