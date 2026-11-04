@@ -95,6 +95,8 @@ def generar_cotizacion_pdf(cot, cfg=None) -> Path:
                   s("Normal", fontSize=8, textColor=GRAY, alignment=TA_RIGHT)),
         Paragraph(f"Vigencia: {cot.vigencia_dias} días a partir de esta fecha",
                   s("Normal", fontSize=8, textColor=GRAY, alignment=TA_RIGHT)),
+        Paragraph(f"Días de renta cotizados: {cot.dias_renta}",
+                  s("Normal", fontSize=8, textColor=GRAY, alignment=TA_RIGHT)),
     ]
 
     header_table = Table(

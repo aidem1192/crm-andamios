@@ -26,6 +26,7 @@ class CotizacionIn(BaseModel):
     cliente_rfc: Optional[str] = None
     fecha: date
     vigencia_dias: int = 15
+    dias_renta: int = 1
     lugar_obra: Optional[str] = None
     incluye_iva: bool = True
     descuento_pct: float = 0.0
@@ -38,8 +39,15 @@ def _siguiente_folio(db: Session) -> str:
     return f"COT-{count:05d}"
 
 
-def _calcular(lineas, descuento_pct, incluye_iva):
-    subtotal = sum(l.cantidad * l.precio_unitario for l in lineas)
+def _total_linea(l, dias_renta: int) -> float:
+    """Las líneas de material se cobran por día rentado; los servicios (flete, mano de obra, etc.)
+    son cobro único y no se multiplican por días."""
+    multiplicador = dias_renta if l.tipo == "material" else 1
+    return round(l.cantidad * l.precio_unitario * multiplicador, 2)
+
+
+def _calcular(lineas, descuento_pct, incluye_iva, dias_renta: int = 1):
+    subtotal = sum(_total_linea(l, dias_renta) for l in lineas)
     descuento = round(subtotal * descuento_pct / 100, 2)
     base = subtotal - descuento
     iva = round(base * IVA_PCT, 2) if incluye_iva else 0.0
@@ -58,6 +66,7 @@ def _cot_dict(c: Cotizacion) -> dict:
         "cliente_rfc": c.cliente_rfc,
         "fecha": str(c.fecha),
         "vigencia_dias": c.vigencia_dias,
+        "dias_renta": c.dias_renta,
         "lugar_obra": c.lugar_obra,
         "incluye_iva": c.incluye_iva,
         "descuento_pct": c.descuento_pct,
@@ -101,7 +110,8 @@ def crear(data: CotizacionIn, db: Session = Depends(get_db)):
     if not data.lineas:
         raise HTTPException(400, "Agrega al menos un concepto")
 
-    subtotal, descuento, iva, total = _calcular(data.lineas, data.descuento_pct, data.incluye_iva)
+    dias_renta = max(1, data.dias_renta)
+    subtotal, descuento, iva, total = _calcular(data.lineas, data.descuento_pct, data.incluye_iva, dias_renta)
 
     cot = Cotizacion(
         folio=_siguiente_folio(db),
@@ -112,6 +122,7 @@ def crear(data: CotizacionIn, db: Session = Depends(get_db)):
         cliente_rfc=data.cliente_rfc,
         fecha=data.fecha,
         vigencia_dias=data.vigencia_dias,
+        dias_renta=dias_renta,
         lugar_obra=data.lugar_obra,
         incluye_iva=data.incluye_iva,
         descuento_pct=data.descuento_pct,
@@ -131,7 +142,7 @@ def crear(data: CotizacionIn, db: Session = Depends(get_db)):
             descripcion=l.descripcion,
             cantidad=l.cantidad,
             precio_unitario=l.precio_unitario,
-            total_linea=round(l.cantidad * l.precio_unitario, 2),
+            total_linea=_total_linea(l, dias_renta),
         ))
 
     db.commit()

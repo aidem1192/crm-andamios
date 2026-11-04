@@ -404,6 +404,7 @@ class Cotizacion(Base):
     cliente_rfc = Column(String(20))
     fecha = Column(Date, nullable=False)
     vigencia_dias = Column(Integer, default=15)
+    dias_renta = Column(Integer, default=1)  # días de renta cotizados; multiplica las líneas de material
     lugar_obra = Column(Text)
     incluye_iva = Column(Boolean, default=True)
     descuento_pct = Column(Float, default=0.0)
@@ -554,6 +555,13 @@ def _migrar_columnas_nuevas():
         if "tipo_gasto" not in cols_p:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE pagos ADD COLUMN tipo_gasto VARCHAR(50) DEFAULT 'renta'"))
+                conn.commit()
+
+    if "cotizaciones" in inspector.get_table_names():
+        cols_cot = [c["name"] for c in inspector.get_columns("cotizaciones")]
+        if "dias_renta" not in cols_cot:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE cotizaciones ADD COLUMN dias_renta INTEGER DEFAULT 1"))
                 conn.commit()
 
     # documentos_cliente se crea automáticamente vía create_all si no existe

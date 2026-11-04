@@ -57,7 +57,7 @@
     <!-- Fechas y condiciones -->
     <div class="card space-y-4">
       <h2 class="font-semibold text-gray-700 text-lg border-b pb-2">Condiciones</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
           <label class="label">Fecha de cotización *</label>
           <input type="date" x-model="form.fecha" required class="input" />
@@ -65,6 +65,11 @@
         <div>
           <label class="label">Vigencia (días)</label>
           <input type="number" x-model.number="form.vigencia_dias" min="1" max="90" class="input" />
+        </div>
+        <div>
+          <label class="label">Días de renta</label>
+          <input type="number" x-model.number="form.dias_renta" @input="recalcular()" min="1" class="input" />
+          <p class="text-xs text-gray-400 mt-1">Multiplica el total de los materiales. Los servicios se cobran una sola vez.</p>
         </div>
         <div class="flex flex-col justify-end">
           <label class="flex items-center gap-2 cursor-pointer mt-4">
@@ -149,7 +154,7 @@
                            min="0" step="0.01" class="input text-sm text-right" />
                   </td>
                   <td class="py-2 pr-2 text-right font-semibold text-gray-700"
-                      x-text="'$' + (l.cantidad * l.precio_unitario).toLocaleString('es-MX', {minimumFractionDigits:2})"></td>
+                      x-text="'$' + lineaTotal(l).toLocaleString('es-MX', {minimumFractionDigits:2})"></td>
                   <td class="py-2">
                     <button type="button" @click="quitarLinea(i)"
                             class="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
@@ -221,6 +226,7 @@ function cotizacionForm() {
       cliente_nombre: '', cliente_telefono: '', cliente_domicilio: '', cliente_rfc: '',
       fecha: new Date().toISOString().slice(0, 10),
       vigencia_dias: 15,
+      dias_renta: 1,
       lugar_obra: '',
       incluye_iva: true,
       descuento_pct: 0,
@@ -293,8 +299,13 @@ function cotizacionForm() {
       this.recalcular();
     },
 
+    lineaTotal(l) {
+      const dias = l.tipo === 'material' ? (this.form.dias_renta || 1) : 1;
+      return l.cantidad * l.precio_unitario * dias;
+    },
+
     recalcular() {
-      this.subtotal = this.form.lineas.reduce((s, l) => s + (l.cantidad * l.precio_unitario), 0);
+      this.subtotal = this.form.lineas.reduce((s, l) => s + this.lineaTotal(l), 0);
       this.descuentoMonto = this.subtotal * (this.form.descuento_pct / 100);
       const base = this.subtotal - this.descuentoMonto;
       this.iva = this.form.incluye_iva ? base * 0.16 : 0;
