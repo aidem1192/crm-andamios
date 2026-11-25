@@ -5,7 +5,7 @@ from sqlalchemy import func, cast, Date as SADate
 from datetime import date, datetime, timedelta
 from typing import Optional
 from pydantic import BaseModel
-from app.database import get_db, Contrato, Cliente, Material, LineaContrato, Pago, MetodoPago, Gasto
+from app.database import get_db, Contrato, Cliente, Material, LineaContrato, Pago, MetodoPago, Gasto, NotaRemision
 from app.services.devolucion import calcular_devolucion
 import io
 
@@ -140,6 +140,51 @@ def materiales_en_obra(db: Session = Depends(get_db)):
             "estado": m.estado,
         })
     resultado.sort(key=lambda x: -x["en_obra"])
+    return resultado
+
+
+# ─── estado de movimientos por cliente ─────────────────────────────────────
+
+@router.get("/estado-movimientos")
+def estado_movimientos(db: Session = Depends(get_db)):
+    """Material que sigue pendiente de devolver, agrupado por cliente/contrato,
+    junto con el último movimiento (entrega/devolución) registrado."""
+    hoy = date.today()
+    contratos = db.query(Contrato).filter(Contrato.estado == "activo").all()
+
+    resultado = []
+    for c in contratos:
+        ultima_nota = (
+            db.query(NotaRemision)
+            .filter(NotaRemision.contrato_id == c.id)
+            .order_by(NotaRemision.created_at.desc())
+            .first()
+        )
+        for l in c.lineas:
+            pendiente = max(0, l.cantidad - (l.cantidad_devuelta or 0))
+            if pendiente <= 0:
+                continue
+            resultado.append({
+                "cliente_id": c.cliente_id,
+                "cliente": c.cliente.nombre if c.cliente else "",
+                "contrato_id": c.id,
+                "contrato_folio": c.folio,
+                "material": l.material.nombre if l.material else "",
+                "cantidad_entregada": l.cantidad,
+                "cantidad_devuelta": l.cantidad_devuelta or 0,
+                "cantidad_pendiente": pendiente,
+                "fecha_inicio": str(c.fecha_inicio),
+                "fecha_fin": str(c.fecha_fin),
+                "dias_en_campo": (hoy - c.fecha_inicio).days,
+                "vencido": c.fecha_fin < hoy,
+                "ultimo_movimiento": {
+                    "tipo": ultima_nota.tipo,
+                    "fecha": str(ultima_nota.fecha),
+                    "folio": ultima_nota.folio,
+                } if ultima_nota else None,
+            })
+
+    resultado.sort(key=lambda x: (x["cliente"].lower(), x["contrato_folio"]))
     return resultado
 
 

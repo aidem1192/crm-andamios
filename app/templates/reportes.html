@@ -196,6 +196,64 @@
 
   </div>
 
+  <!-- Estado de movimientos por cliente -->
+  <div class="card mb-5">
+    <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+      <h2 class="font-semibold text-gray-700">Estado de movimientos por cliente</h2>
+      <input type="text" x-model="buscaMovimiento" placeholder="Buscar cliente o material…"
+             class="input text-sm py-1 max-w-xs">
+    </div>
+    <template x-if="estadoMovimientos.length === 0">
+      <div class="text-gray-400 text-sm py-4 text-center">No hay material pendiente de devolución en este momento.</div>
+    </template>
+    <div class="overflow-x-auto" x-show="estadoMovimientos.length > 0">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Cliente</th>
+            <th class="pb-2">Contrato</th>
+            <th class="pb-2">Material</th>
+            <th class="pb-2 text-center">Entregado</th>
+            <th class="pb-2 text-center">Devuelto</th>
+            <th class="pb-2 text-center">Pendiente</th>
+            <th class="pb-2">Último movimiento</th>
+            <th class="pb-2 text-right">Días en campo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="m in movimientosFiltrados()" :key="m.contrato_id + '-' + m.material">
+            <tr class="border-b last:border-0">
+              <td class="py-2">
+                <a :href="'/contratos/' + m.contrato_id" class="font-medium text-gray-700 hover:text-orange-600" x-text="m.cliente"></a>
+              </td>
+              <td class="py-2 text-orange-600 font-medium" x-text="m.contrato_folio"></td>
+              <td class="py-2" x-text="m.material"></td>
+              <td class="py-2 text-center" x-text="m.cantidad_entregada"></td>
+              <td class="py-2 text-center" x-text="m.cantidad_devuelta"></td>
+              <td class="py-2 text-center font-bold text-orange-600" x-text="m.cantidad_pendiente"></td>
+              <td class="py-2 text-xs">
+                <template x-if="m.ultimo_movimiento">
+                  <span>
+                    <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                          :class="m.ultimo_movimiento.tipo === 'entrega' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'"
+                          x-text="m.ultimo_movimiento.tipo === 'entrega' ? 'Entrega' : 'Devolución'"></span>
+                    <span class="text-gray-400 ml-1" x-text="m.ultimo_movimiento.fecha"></span>
+                  </span>
+                </template>
+                <span x-show="!m.ultimo_movimiento" class="text-gray-300">Sin notas de remisión</span>
+              </td>
+              <td class="py-2 text-right">
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="m.vencido ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'"
+                      x-text="m.dias_en_campo + ' día(s)' + (m.vencido ? ' · VENCIDO' : '')"></span>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Ingresos por mes (tendencia histórica) -->
   <div class="card mb-5">
     <h2 class="font-semibold text-gray-700 mb-3">Ingresos por mes (últimos 6 meses)</h2>
@@ -368,6 +426,8 @@ function reportesPage() {
     porVencer: [],
     alertasDevolucion: [],
     materialesEnObra: [],
+    estadoMovimientos: [],
+    buscaMovimiento: '',
     ingresosPorMes: [],
     periodo: {},
     selPeriodo: 'mes',
@@ -391,6 +451,7 @@ function reportesPage() {
         fetch('/api/reportes/contratos-por-vencer?dias=3').then(r => r.json()).then(d => this.porVencer = d),
         fetch('/api/reportes/alertas-devolucion').then(r => r.json()).then(d => this.alertasDevolucion = d),
         fetch('/api/reportes/materiales-en-obra').then(r => r.json()).then(d => this.materialesEnObra = d),
+        fetch('/api/reportes/estado-movimientos').then(r => r.json()).then(d => this.estadoMovimientos = d),
         fetch('/api/reportes/ingresos-por-mes?meses=6').then(r => r.json()).then(d => this.ingresosPorMes = d),
         this.cargarPeriodo(),
       ]);
@@ -405,6 +466,14 @@ function reportesPage() {
     },
 
     fmt(v) { return Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+
+    movimientosFiltrados() {
+      const q = this.buscaMovimiento.trim().toLowerCase();
+      if (!q) return this.estadoMovimientos;
+      return this.estadoMovimientos.filter(m =>
+        m.cliente.toLowerCase().includes(q) || m.material.toLowerCase().includes(q)
+      );
+    },
 
     barAltura(valor) {
       const max = Math.max(...this.ingresosPorMes.map(m => m.ingreso), 1);
