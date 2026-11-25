@@ -272,10 +272,20 @@ def generar_contrato(contrato_data: dict) -> Path:
     _run_valor(t[11].rows[0].cells[1], 1, fecha_larga(fecha_ini))
 
     # -----------------------------------------------------------------------
-    # TABLA 14 — Pagaré: importe en la celda 2
-    # Celda 2: runs=['$96.00'] → consolidar con nuevo valor
+    # TABLA 6 — Monto en el cuerpo del pagaré: "$96.00 (SON NOVENTA PESOS 00/100)"
+    # El "$96.00" es un merge field real de Word; "(SON ... PESOS 00/100)" es texto
+    # plano fijo que sigue después — solo se reemplaza la palabra del número.
     # -----------------------------------------------------------------------
-    _consolidar_runs(t[14].rows[0].cells[2], f"${total_iva:.2f}")
+    letra_sin_mn = letra.rsplit(" M.N.", 1)[0]
+    _set_celda_con_merge(t[6].rows[0].cells[0], f"${total_iva:.2f}")
+    _run_valor(t[6].rows[0].cells[0], 5, f" (SON {letra_sin_mn})")
+
+    # -----------------------------------------------------------------------
+    # TABLA 14 — Pagaré: importe en la celda 2 (merge field real de Word —
+    # usar _set_celda_con_merge, NO _consolidar_runs, o se corrompe el campo
+    # y Word muestra el código crudo "MERGEFIELD..." en vez del valor).
+    # -----------------------------------------------------------------------
+    _set_celda_con_merge(t[14].rows[0].cells[2], f"${total_iva:.2f}")
 
     # -----------------------------------------------------------------------
     # TABLA 15 — Pagaré: nombre / teléfono / domicilio / referencia
@@ -284,6 +294,14 @@ def generar_contrato(contrato_data: dict) -> Path:
     # Fila 2: celda 1: runs=['C. 62...', '.']               → run[0] = domicilio, vaciar run[1]
     # Fila 3: celda 1: referencia
     # -----------------------------------------------------------------------
+    # -----------------------------------------------------------------------
+    # TABLA 12 y 13 — Recuadro de firma "REPRESENTANTE LEGAL" (duplicado dos
+    # veces en el documento). Fila 1, celda 1: nombre del cliente que firma.
+    # Antes quedaba fijo en el nombre de ejemplo de la plantilla original.
+    # -----------------------------------------------------------------------
+    _run_valor(t[12].rows[1].cells[1], 3, contrato_data["cliente_nombre"].upper())
+    _run_valor(t[13].rows[1].cells[1], 3, contrato_data["cliente_nombre"].upper())
+
     _run_valor(t[15].rows[0].cells[1], 1, contrato_data["cliente_nombre"].upper())
     _consolidar_runs(t[15].rows[1].cells[1], contrato_data.get("cliente_telefono", ""))
     _run_valor(t[15].rows[2].cells[1], 0, contrato_data.get("cliente_domicilio", ""))
@@ -296,10 +314,9 @@ def generar_contrato(contrato_data: dict) -> Path:
     _consolidar_runs(t[16].rows[0].cells[0], fecha_larga(fecha_ini))
 
     # -----------------------------------------------------------------------
-    # TABLA 17 — Pagaré: importe $$  (1 celda, runs=['$','','','','$96.00',''])
-    # → El '$' inicial es el símbolo fijo, run[4] = valor
+    # TABLA 17 — Pagaré: importe $$ (merge field real de Word, igual que Tabla 14)
     # -----------------------------------------------------------------------
-    _run_valor(t[17].rows[0].cells[0], 4, f"${total_iva:.2f}")
+    _set_celda_con_merge(t[17].rows[0].cells[0], f"${total_iva:.2f}")
 
     # -----------------------------------------------------------------------
     # TABLA 18 — Pagaré: importe en letra (runs fragmentados)
