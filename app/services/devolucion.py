@@ -10,7 +10,29 @@ Regla de gracia de devolución:
     - Si fecha_devolucion <= fecha_limite → sin cargo extra
     - Si fecha_devolucion >  fecha_limite → cobrar 1 día extra
 """
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
+
+
+HORA_LIMITE_ENTREGA = time(17, 0)  # 5:00 PM
+
+
+def fecha_inicio_efectiva(fecha_entrega: date, hora_entrega: str | None) -> date:
+    """
+    Regla de corte de entrega (salida de material):
+      Si el cliente recoge el material a las 5:00 PM o después, ese día no se
+      cobra — el conteo de renta empieza al día siguiente.
+
+    hora_entrega: cadena "HH:MM" (24h) o None si no se especificó.
+    """
+    if not hora_entrega:
+        return fecha_entrega
+    try:
+        h, m = (int(p) for p in hora_entrega.split(":")[:2])
+    except (ValueError, AttributeError):
+        return fecha_entrega
+    if time(h, m) >= HORA_LIMITE_ENTREGA:
+        return fecha_entrega + timedelta(days=1)
+    return fecha_entrega
 
 
 def siguiente_dia_habil(d: date) -> date:

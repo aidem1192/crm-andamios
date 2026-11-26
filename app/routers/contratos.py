@@ -6,7 +6,7 @@ from typing import Optional, List
 from datetime import date, datetime
 from app.database import get_db, Contrato, LineaContrato, Cliente, Material, Usuario, CargoExtra
 from app.services.numero_a_letra import numero_a_letra
-from app.services.devolucion import calcular_devolucion
+from app.services.devolucion import calcular_devolucion, fecha_inicio_efectiva
 from app.auth import verify_password, log_audit
 import os
 
@@ -32,6 +32,7 @@ class CargoExtraSchema(BaseModel):
 class ContratoCreate(BaseModel):
     cliente_id: int
     fecha_inicio: date
+    hora_entrega: Optional[str] = None  # "HH:MM" — si es 17:00 o después, ese día no se cobra
     fecha_fin: date
     lugar_obra: Optional[str] = None
     personas_autorizadas: Optional[str] = None
@@ -173,10 +174,11 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
         motivo = f" Motivo: {cliente.motivo_lista_negra}" if cliente.motivo_lista_negra else ""
         raise HTTPException(status_code=403, detail=f"Este cliente está en la lista negra y no puede rentar material.{motivo}")
 
-    # Validar fechas
-    if data.fecha_fin < data.fecha_inicio:
+    # Validar fechas (la hora de entrega puede recorrer el día de inicio al siguiente — ver fecha_inicio_efectiva)
+    fecha_inicio = fecha_inicio_efectiva(data.fecha_inicio, data.hora_entrega)
+    if data.fecha_fin < fecha_inicio:
         raise HTTPException(status_code=400, detail="La fecha de fin no puede ser anterior a la fecha de inicio")
-    dias = (data.fecha_fin - data.fecha_inicio).days + 1
+    dias = (data.fecha_fin - fecha_inicio).days + 1
 
     # Validar líneas
     if not data.lineas:
@@ -199,7 +201,7 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
     contrato = Contrato(
         folio=folio,
         cliente_id=data.cliente_id,
-        fecha_inicio=data.fecha_inicio,
+        fecha_inicio=fecha_inicio,
         fecha_fin=data.fecha_fin,
         dias=dias,
         lugar_obra=data.lugar_obra,

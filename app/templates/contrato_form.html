@@ -221,6 +221,11 @@
           <input type="date" class="input" x-model="form.fecha_inicio" @change="calcularDias()" required>
         </div>
         <div>
+          <label class="label">Hora de entrega</label>
+          <input type="time" class="input" x-model="form.hora_entrega" @change="calcularDias()">
+          <p class="text-xs text-gray-400 mt-1">5 PM o después: ese día no se cobra, inicia al siguiente.</p>
+        </div>
+        <div>
           <label class="label">Fecha de terminación *</label>
           <input type="date" class="input" x-model="form.fecha_fin" @change="calcularDias()" required>
         </div>
@@ -340,6 +345,7 @@ function contratoForm() {
       referencias: [],
       lineas: [],
       fecha_inicio: new Date().toISOString().split('T')[0],
+      hora_entrega: '',
       fecha_fin: '',
       dias: '',
       lugar_obra: '',
@@ -425,6 +431,9 @@ function contratoForm() {
     calcularDias() {
       if (this.form.fecha_inicio && this.form.fecha_fin) {
         const ini = new Date(this.form.fecha_inicio);
+        if (this.form.hora_entrega && this.form.hora_entrega >= '17:00') {
+          ini.setDate(ini.getDate() + 1);
+        }
         const fin = new Date(this.form.fecha_fin);
         const diff = Math.floor((fin - ini) / 86400000) + 1;
         this.form.dias = diff > 0 ? diff : '';
@@ -505,6 +514,7 @@ function contratoForm() {
         const body = {
           cliente_id: clienteId,
           fecha_inicio: this.form.fecha_inicio,
+          hora_entrega: this.form.hora_entrega || null,
           fecha_fin: this.form.fecha_fin,
           lugar_obra: this.form.lugar_obra,
           personas_autorizadas: this.form.personas_autorizadas,
