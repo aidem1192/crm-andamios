@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import date
 from app.database import get_db, Pago, Contrato, MetodoPago
+from app.services.saldo import calcular_saldo, estado_pago_de
 
 router = APIRouter(tags=["pagos"])
 
@@ -88,15 +89,11 @@ def _siguiente_folio_pago(db: Session) -> str:
 
 
 def _actualizar_estado_pago(contrato: Contrato, db: Session):
-    total_pagado = sum(p.monto for p in contrato.pagos)
-    contrato.total_pagado = round(total_pagado, 2)
-    saldo = round(contrato.total_con_iva - total_pagado, 2)
-    if saldo <= 0:
-        contrato.estado_pago = "pagado"
-    elif total_pagado > 0:
-        contrato.estado_pago = "parcial"
-    else:
-        contrato.estado_pago = "pendiente"
+    """Actualiza el total pagado (histórico completo) y el estado de pago
+    según el saldo acumulado AL DÍA DE HOY (o a la fecha de devolución si ya cerró)."""
+    contrato.total_pagado = round(sum(p.monto for p in contrato.pagos), 2)
+    s = calcular_saldo(contrato)
+    contrato.estado_pago = estado_pago_de(s["saldo_pendiente"], contrato.total_pagado)
 
 
 @router.get("/api/pagos")
@@ -119,11 +116,14 @@ def listar_pagos_contrato(contrato_id: int, db: Session = Depends(get_db)):
     c = db.query(Contrato).filter(Contrato.id == contrato_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    s = calcular_saldo(c)
     return {
         "total_contrato": c.total_con_iva,
-        "total_pagado": c.total_pagado or 0,
-        "saldo_pendiente": round((c.total_con_iva or 0) - (c.total_pagado or 0), 2),
-        "estado_pago": c.estado_pago or "pendiente",
+        "dias_devengados": s["dias_devengados"],
+        "monto_devengado": s["monto_devengado"],
+        "total_pagado": s["total_pagado"],
+        "saldo_pendiente": s["saldo_pendiente"],
+        "estado_pago": estado_pago_de(s["saldo_pendiente"], s["total_pagado"]),
         "pagos": [{
             "id": p.id, "folio": p.folio, "fecha": str(p.fecha),
             "monto": p.monto, "metodo_pago": p.metodo_pago.nombre if p.metodo_pago else "",
@@ -149,7 +149,7 @@ def registrar_pago(data: PagoCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400,
                             detail=f"El método '{metodo.nombre}' requiere número de referencia")
 
-    saldo_actual = round((c.total_con_iva or 0) - (c.total_pagado or 0), 2)
+    saldo_actual = calcular_saldo(c)["saldo_pendiente"]
     if data.monto > saldo_actual + 0.01:
         raise HTTPException(status_code=400,
                             detail=f"El monto (${data.monto:.2f}) supera el saldo pendiente (${saldo_actual:.2f})")
@@ -174,7 +174,7 @@ def registrar_pago(data: PagoCreate, db: Session = Depends(get_db)):
     return {
         "id": pago.id, "folio": pago.folio,
         "estado_pago": c.estado_pago,
-        "saldo_nuevo": round((c.total_con_iva or 0) - (c.total_pagado or 0), 2),
+        "saldo_nuevo": calcular_saldo(c)["saldo_pendiente"],
     }
 
 
@@ -187,8 +187,9 @@ def descargar_recibo_pago(pago_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Pago no encontrado")
 
     c = p.contrato
-    # Calcular cuánto se había pagado ANTES de este pago (excluyendo el actual)
-    otros_pagos = sum(op.monto for op in c.pagos if op.id != p.id)
+    # Saldo devengado a la fecha de ESTE pago: antes (sin contarlo) y después (con él)
+    saldo_antes = calcular_saldo(c, hasta=p.fecha, excluir_pago_id=p.id)
+    saldo_despues = calcular_saldo(c, hasta=p.fecha)
 
     data = {
         "folio": p.folio,
@@ -201,9 +202,9 @@ def descargar_recibo_pago(pago_id: int, db: Session = Depends(get_db)):
         "cliente_nombre": c.cliente.nombre if c.cliente else "",
         "lugar_obra": c.lugar_obra or "",
         "total_contrato": c.total_con_iva or 0,
-        "total_pagado_previo": round(otros_pagos, 2),
-        "saldo_anterior": round((c.total_con_iva or 0) - otros_pagos, 2),
-        "saldo_nuevo": round((c.total_con_iva or 0) - (c.total_pagado or 0), 2),
+        "total_pagado_previo": saldo_antes["total_pagado"],
+        "saldo_anterior": saldo_antes["saldo_pendiente"],
+        "saldo_nuevo": saldo_despues["saldo_pendiente"],
     }
     output_path = generar_recibo_pago(data)
     return FileResponse(

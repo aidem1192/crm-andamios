@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from pydantic import BaseModel
 from app.database import get_db, Contrato, Cliente, Material, LineaContrato, Pago, MetodoPago, Gasto, NotaRemision
+from app.services.saldo import calcular_saldo, estado_pago_de
 from app.services.devolucion import calcular_devolucion
 import io
 
@@ -179,17 +180,17 @@ def materiales_mas_rentados(limite: int = 20, db: Session = Depends(get_db)):
 
 @router.get("/cuentas-por-cobrar")
 def cuentas_por_cobrar(db: Session = Depends(get_db)):
-    """Contratos con saldo pendiente de pago (no cancelados, estado_pago != pagado)."""
+    """Contratos con saldo pendiente de pago, acumulado día con día mientras el
+    material no se haya devuelto por completo (no se calcula sobre estado_pago
+    almacenado porque ese campo solo se actualiza cuando entra un pago nuevo —
+    aquí se recalcula en vivo para cada contrato, no importa cuándo fue el último pago)."""
     hoy = date.today()
-    contratos = (
-        db.query(Contrato)
-        .filter(Contrato.estado != "cancelado", Contrato.estado_pago != "pagado")
-        .all()
-    )
+    contratos = db.query(Contrato).filter(Contrato.estado != "cancelado").all()
     filas = []
     total_saldo = 0.0
     for c in contratos:
-        saldo = round((c.total_con_iva or 0) - (c.total_pagado or 0), 2)
+        s = calcular_saldo(c)
+        saldo = s["saldo_pendiente"]
         if saldo <= 0:
             continue
         filas.append({
@@ -198,9 +199,10 @@ def cuentas_por_cobrar(db: Session = Depends(get_db)):
             "cliente": c.cliente.nombre if c.cliente else "",
             "cliente_telefono": c.cliente.telefono if c.cliente else "",
             "estado_contrato": c.estado,
-            "estado_pago": c.estado_pago,
-            "total_con_iva": c.total_con_iva or 0,
-            "total_pagado": c.total_pagado or 0,
+            "estado_pago": estado_pago_de(saldo, s["total_pagado"]),
+            "dias_devengados": s["dias_devengados"],
+            "monto_devengado": s["monto_devengado"],
+            "total_pagado": s["total_pagado"],
             "saldo_pendiente": saldo,
             "fecha_inicio": str(c.fecha_inicio),
             "dias_desde_inicio": (hoy - c.fecha_inicio).days,
@@ -674,41 +676,38 @@ def exportar_excel(
                 cell.alignment = right_a
     _autowidth(ws6)
 
-    # ── Hoja 7: Cuentas por cobrar (saldo pendiente actual, no por periodo) ──
+    # ── Hoja 7: Cuentas por cobrar (saldo acumulado día con día, no por periodo) ──
     ws7 = wb.create_sheet("Cuentas por cobrar")
-    contratos_deuda = (
-        db.query(Contrato)
-        .filter(Contrato.estado != "cancelado", Contrato.estado_pago != "pagado")
-        .all()
-    )
+    contratos_deuda = db.query(Contrato).filter(Contrato.estado != "cancelado").all()
     filas_deuda = []
     for c in contratos_deuda:
-        saldo = round((c.total_con_iva or 0) - (c.total_pagado or 0), 2)
-        if saldo > 0:
-            filas_deuda.append((c, saldo))
-    filas_deuda.sort(key=lambda x: -x[1])
-    total_por_cobrar = sum(s for _, s in filas_deuda)
+        s = calcular_saldo(c)
+        if s["saldo_pendiente"] > 0:
+            filas_deuda.append((c, s))
+    filas_deuda.sort(key=lambda x: -x[1]["saldo_pendiente"])
+    total_por_cobrar = sum(s["saldo_pendiente"] for _, s in filas_deuda)
 
-    cols_cc = ["Folio", "Cliente", "Teléfono", "Fecha inicio", "Días desde inicio",
-               "Total c/IVA", "Total pagado", "Saldo pendiente", "Estado pago", "Estado contrato"]
+    cols_cc = ["Folio", "Cliente", "Teléfono", "Fecha inicio", "Días desde inicio", "Días devengados",
+               "Monto devengado", "Total pagado", "Saldo pendiente", "Estado pago", "Estado contrato"]
     _titulo(ws7, "Cuentas por cobrar", len(cols_cc))
     _hdr(ws7, 3, cols_cc)
     hoy_cc = date.today()
-    for ri, (c, saldo) in enumerate(filas_deuda, 4):
+    for ri, (c, s) in enumerate(filas_deuda, 4):
         row_data = [
             c.folio, c.cliente.nombre if c.cliente else "", c.cliente.telefono if c.cliente else "",
-            str(c.fecha_inicio), (hoy_cc - c.fecha_inicio).days,
-            c.total_con_iva or 0, c.total_pagado or 0, saldo, c.estado_pago, c.estado,
+            str(c.fecha_inicio), (hoy_cc - c.fecha_inicio).days, s["dias_devengados"],
+            s["monto_devengado"], s["total_pagado"], s["saldo_pendiente"],
+            estado_pago_de(s["saldo_pendiente"], s["total_pagado"]), c.estado,
         ]
         for ci, val in enumerate(row_data, 1):
             cell = ws7.cell(row=ri, column=ci, value=val)
             cell.border = borde
-            if ci in (6, 7, 8):
+            if ci in (7, 8, 9):
                 cell.number_format = '"$"#,##0.00'
                 cell.alignment = right_a
     total_row_cc = len(filas_deuda) + 5
-    ws7.cell(row=total_row_cc, column=7, value="TOTAL POR COBRAR").font = Font(bold=True)
-    tc_cc = ws7.cell(row=total_row_cc, column=8, value=round(total_por_cobrar, 2))
+    ws7.cell(row=total_row_cc, column=8, value="TOTAL POR COBRAR").font = Font(bold=True)
+    tc_cc = ws7.cell(row=total_row_cc, column=9, value=round(total_por_cobrar, 2))
     tc_cc.font = Font(bold=True)
     tc_cc.number_format = '"$"#,##0.00'
     tc_cc.alignment = right_a

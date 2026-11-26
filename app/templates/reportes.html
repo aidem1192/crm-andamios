@@ -269,7 +269,8 @@
           <tr class="text-left text-gray-400 text-xs border-b">
             <th class="pb-2">Cliente</th>
             <th class="pb-2">Contrato</th>
-            <th class="pb-2 text-right">Total</th>
+            <th class="pb-2 text-center">Días</th>
+            <th class="pb-2 text-right">Devengado</th>
             <th class="pb-2 text-right">Pagado</th>
             <th class="pb-2 text-right">Pendiente</th>
             <th class="pb-2 text-center">Estado</th>
@@ -282,7 +283,8 @@
                 <a :href="'/contratos/' + d.contrato_id" class="font-medium text-gray-700 hover:text-orange-600" x-text="d.cliente"></a>
               </td>
               <td class="py-2 text-orange-600 font-medium" x-text="d.folio"></td>
-              <td class="py-2 text-right" x-text="'$' + fmt(d.total_con_iva)"></td>
+              <td class="py-2 text-center text-gray-500" x-text="d.dias_devengados"></td>
+              <td class="py-2 text-right" x-text="'$' + fmt(d.monto_devengado)"></td>
               <td class="py-2 text-right text-green-600" x-text="'$' + fmt(d.total_pagado)"></td>
               <td class="py-2 text-right font-bold text-red-600" x-text="'$' + fmt(d.saldo_pendiente)"></td>
               <td class="py-2 text-center">
