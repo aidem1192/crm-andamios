@@ -254,6 +254,82 @@
     </div>
   </div>
 
+  <!-- Cuentas por cobrar -->
+  <div class="card mb-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold text-gray-700">Cuentas por cobrar</h2>
+      <span class="text-sm font-bold text-red-600" x-text="'$' + fmt(cuentasPorCobrar.total_saldo_pendiente)"></span>
+    </div>
+    <template x-if="(cuentasPorCobrar.contratos||[]).length === 0">
+      <div class="text-gray-400 text-sm py-4 text-center">No hay saldos pendientes de cobro. 🎉</div>
+    </template>
+    <div class="overflow-x-auto" x-show="(cuentasPorCobrar.contratos||[]).length > 0">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Cliente</th>
+            <th class="pb-2">Contrato</th>
+            <th class="pb-2 text-right">Total</th>
+            <th class="pb-2 text-right">Pagado</th>
+            <th class="pb-2 text-right">Pendiente</th>
+            <th class="pb-2 text-center">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="d in (cuentasPorCobrar.contratos||[])" :key="d.contrato_id">
+            <tr class="border-b last:border-0">
+              <td class="py-2">
+                <a :href="'/contratos/' + d.contrato_id" class="font-medium text-gray-700 hover:text-orange-600" x-text="d.cliente"></a>
+              </td>
+              <td class="py-2 text-orange-600 font-medium" x-text="d.folio"></td>
+              <td class="py-2 text-right" x-text="'$' + fmt(d.total_con_iva)"></td>
+              <td class="py-2 text-right text-green-600" x-text="'$' + fmt(d.total_pagado)"></td>
+              <td class="py-2 text-right font-bold text-red-600" x-text="'$' + fmt(d.saldo_pendiente)"></td>
+              <td class="py-2 text-center">
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                      :class="d.estado_pago === 'parcial' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'"
+                      x-text="d.estado_pago === 'parcial' ? 'PARCIAL' : 'PENDIENTE'"></span>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Materiales más rentados -->
+  <div class="card mb-5">
+    <h2 class="font-semibold text-gray-700 mb-3">Materiales más rentados (histórico)</h2>
+    <template x-if="materialesMasRentados.length === 0">
+      <div class="text-gray-400 text-sm py-4 text-center">Sin datos todavía.</div>
+    </template>
+    <div class="overflow-x-auto" x-show="materialesMasRentados.length > 0">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-400 text-xs border-b">
+            <th class="pb-2">Material</th>
+            <th class="pb-2 text-center">Veces rentado</th>
+            <th class="pb-2 text-center">Cantidad total</th>
+            <th class="pb-2 text-right">Ingreso generado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(m, i) in materialesMasRentados.slice(0, 10)" :key="m.material_id">
+            <tr class="border-b last:border-0">
+              <td class="py-2">
+                <span class="text-gray-300 mr-1" x-text="(i+1) + '.'"></span>
+                <span class="font-medium" x-text="m.material"></span>
+              </td>
+              <td class="py-2 text-center" x-text="m.veces_rentado"></td>
+              <td class="py-2 text-center" x-text="m.cantidad_total"></td>
+              <td class="py-2 text-right font-semibold text-orange-600" x-text="'$' + fmt(m.ingreso_generado)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Ingresos por mes (tendencia histórica) -->
   <div class="card mb-5">
     <h2 class="font-semibold text-gray-700 mb-3">Ingresos por mes (últimos 6 meses)</h2>
@@ -428,6 +504,8 @@ function reportesPage() {
     materialesEnObra: [],
     estadoMovimientos: [],
     buscaMovimiento: '',
+    cuentasPorCobrar: {},
+    materialesMasRentados: [],
     ingresosPorMes: [],
     periodo: {},
     selPeriodo: 'mes',
@@ -452,6 +530,8 @@ function reportesPage() {
         fetch('/api/reportes/alertas-devolucion').then(r => r.json()).then(d => this.alertasDevolucion = d),
         fetch('/api/reportes/materiales-en-obra').then(r => r.json()).then(d => this.materialesEnObra = d),
         fetch('/api/reportes/estado-movimientos').then(r => r.json()).then(d => this.estadoMovimientos = d),
+        fetch('/api/reportes/cuentas-por-cobrar').then(r => r.json()).then(d => this.cuentasPorCobrar = d),
+        fetch('/api/reportes/materiales-mas-rentados').then(r => r.json()).then(d => this.materialesMasRentados = d),
         fetch('/api/reportes/ingresos-por-mes?meses=6').then(r => r.json()).then(d => this.ingresosPorMes = d),
         this.cargarPeriodo(),
       ]);

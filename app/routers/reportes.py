@@ -143,6 +143,74 @@ def materiales_en_obra(db: Session = Depends(get_db)):
     return resultado
 
 
+# ─── materiales más rentados ────────────────────────────────────────────────
+
+@router.get("/materiales-mas-rentados")
+def materiales_mas_rentados(limite: int = 20, db: Session = Depends(get_db)):
+    """Ranking histórico de materiales por veces rentado, cantidad total e ingreso generado."""
+    lineas = (
+        db.query(LineaContrato)
+        .join(Contrato, LineaContrato.contrato_id == Contrato.id)
+        .filter(Contrato.estado != "cancelado")
+        .all()
+    )
+    agregados: dict[int, dict] = {}
+    for l in lineas:
+        mid = l.material_id
+        if mid not in agregados:
+            agregados[mid] = {
+                "material_id": mid,
+                "material": l.material.nombre if l.material else "?",
+                "veces_rentado": 0,
+                "cantidad_total": 0,
+                "ingreso_generado": 0.0,
+            }
+        agregados[mid]["veces_rentado"] += 1
+        agregados[mid]["cantidad_total"] += l.cantidad
+        agregados[mid]["ingreso_generado"] += l.total_linea or 0
+
+    resultado = sorted(agregados.values(), key=lambda x: -x["ingreso_generado"])
+    for r in resultado:
+        r["ingreso_generado"] = round(r["ingreso_generado"], 2)
+    return resultado[:limite]
+
+
+# ─── cuentas por cobrar ─────────────────────────────────────────────────────
+
+@router.get("/cuentas-por-cobrar")
+def cuentas_por_cobrar(db: Session = Depends(get_db)):
+    """Contratos con saldo pendiente de pago (no cancelados, estado_pago != pagado)."""
+    hoy = date.today()
+    contratos = (
+        db.query(Contrato)
+        .filter(Contrato.estado != "cancelado", Contrato.estado_pago != "pagado")
+        .all()
+    )
+    filas = []
+    total_saldo = 0.0
+    for c in contratos:
+        saldo = round((c.total_con_iva or 0) - (c.total_pagado or 0), 2)
+        if saldo <= 0:
+            continue
+        filas.append({
+            "contrato_id": c.id,
+            "folio": c.folio,
+            "cliente": c.cliente.nombre if c.cliente else "",
+            "cliente_telefono": c.cliente.telefono if c.cliente else "",
+            "estado_contrato": c.estado,
+            "estado_pago": c.estado_pago,
+            "total_con_iva": c.total_con_iva or 0,
+            "total_pagado": c.total_pagado or 0,
+            "saldo_pendiente": saldo,
+            "fecha_inicio": str(c.fecha_inicio),
+            "dias_desde_inicio": (hoy - c.fecha_inicio).days,
+        })
+        total_saldo += saldo
+
+    filas.sort(key=lambda x: -x["saldo_pendiente"])
+    return {"total_saldo_pendiente": round(total_saldo, 2), "contratos": filas}
+
+
 # ─── estado de movimientos por cliente ─────────────────────────────────────
 
 @router.get("/estado-movimientos")
@@ -574,6 +642,77 @@ def exportar_excel(
         cell.alignment = right_a
         cell.border = borde
     _autowidth(ws5)
+
+    # ── Hoja 6: Materiales más rentados (histórico completo, no por periodo) ──
+    ws6 = wb.create_sheet("Materiales mas rentados")
+    lineas_hist = (
+        db.query(LineaContrato)
+        .join(Contrato, LineaContrato.contrato_id == Contrato.id)
+        .filter(Contrato.estado != "cancelado")
+        .all()
+    )
+    agregados: dict[int, dict] = {}
+    for l in lineas_hist:
+        mid = l.material_id
+        if mid not in agregados:
+            agregados[mid] = {"material": l.material.nombre if l.material else "?",
+                               "veces_rentado": 0, "cantidad_total": 0, "ingreso_generado": 0.0}
+        agregados[mid]["veces_rentado"] += 1
+        agregados[mid]["cantidad_total"] += l.cantidad
+        agregados[mid]["ingreso_generado"] += l.total_linea or 0
+    ranking = sorted(agregados.values(), key=lambda x: -x["ingreso_generado"])
+
+    cols_m = ["Material", "Veces rentado", "Cantidad total rentada", "Ingreso generado"]
+    _titulo(ws6, "Materiales mas rentados (historico completo)", len(cols_m))
+    _hdr(ws6, 3, cols_m)
+    for ri, r in enumerate(ranking, 4):
+        for ci, val in enumerate([r["material"], r["veces_rentado"], r["cantidad_total"], round(r["ingreso_generado"], 2)], 1):
+            cell = ws6.cell(row=ri, column=ci, value=val)
+            cell.border = borde
+            if ci == 4:
+                cell.number_format = '"$"#,##0.00'
+                cell.alignment = right_a
+    _autowidth(ws6)
+
+    # ── Hoja 7: Cuentas por cobrar (saldo pendiente actual, no por periodo) ──
+    ws7 = wb.create_sheet("Cuentas por cobrar")
+    contratos_deuda = (
+        db.query(Contrato)
+        .filter(Contrato.estado != "cancelado", Contrato.estado_pago != "pagado")
+        .all()
+    )
+    filas_deuda = []
+    for c in contratos_deuda:
+        saldo = round((c.total_con_iva or 0) - (c.total_pagado or 0), 2)
+        if saldo > 0:
+            filas_deuda.append((c, saldo))
+    filas_deuda.sort(key=lambda x: -x[1])
+    total_por_cobrar = sum(s for _, s in filas_deuda)
+
+    cols_cc = ["Folio", "Cliente", "Teléfono", "Fecha inicio", "Días desde inicio",
+               "Total c/IVA", "Total pagado", "Saldo pendiente", "Estado pago", "Estado contrato"]
+    _titulo(ws7, "Cuentas por cobrar", len(cols_cc))
+    _hdr(ws7, 3, cols_cc)
+    hoy_cc = date.today()
+    for ri, (c, saldo) in enumerate(filas_deuda, 4):
+        row_data = [
+            c.folio, c.cliente.nombre if c.cliente else "", c.cliente.telefono if c.cliente else "",
+            str(c.fecha_inicio), (hoy_cc - c.fecha_inicio).days,
+            c.total_con_iva or 0, c.total_pagado or 0, saldo, c.estado_pago, c.estado,
+        ]
+        for ci, val in enumerate(row_data, 1):
+            cell = ws7.cell(row=ri, column=ci, value=val)
+            cell.border = borde
+            if ci in (6, 7, 8):
+                cell.number_format = '"$"#,##0.00'
+                cell.alignment = right_a
+    total_row_cc = len(filas_deuda) + 5
+    ws7.cell(row=total_row_cc, column=7, value="TOTAL POR COBRAR").font = Font(bold=True)
+    tc_cc = ws7.cell(row=total_row_cc, column=8, value=round(total_por_cobrar, 2))
+    tc_cc.font = Font(bold=True)
+    tc_cc.number_format = '"$"#,##0.00'
+    tc_cc.alignment = right_a
+    _autowidth(ws7)
 
     # ── stream ──
     buf = io.BytesIO()
