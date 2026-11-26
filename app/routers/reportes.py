@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date as SADate
 from datetime import date, datetime, timedelta
@@ -722,4 +722,63 @@ def exportar_excel(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{nombre_archivo}"'},
+    )
+
+
+# ─── corte de caja semanal (PDF) ────────────────────────────────────────────
+
+@router.get("/corte-caja")
+def corte_caja_pdf(lunes: Optional[str] = None, db: Session = Depends(get_db)):
+    """Genera el corte de caja de una semana (lunes a domingo) en PDF:
+    total cobrado por método de pago, detalle de pagos, y espacio de firma."""
+    from app.services.generar_corte_caja import generar_corte_caja
+    from app.database import ConfigEmpresa
+
+    if lunes:
+        dia_ref = date.fromisoformat(lunes)
+    else:
+        dia_ref = date.today()
+    inicio_semana = dia_ref - timedelta(days=dia_ref.weekday())
+    fin_semana = inicio_semana + timedelta(days=6)
+
+    pagos = (
+        db.query(Pago)
+        .filter(Pago.fecha >= inicio_semana, Pago.fecha <= fin_semana)
+        .order_by(Pago.fecha)
+        .all()
+    )
+    gastos = (
+        db.query(Gasto)
+        .filter(Gasto.fecha >= inicio_semana, Gasto.fecha <= fin_semana)
+        .all()
+    )
+
+    metodos: dict[str, float] = {}
+    for p in pagos:
+        nombre = p.metodo_pago.nombre if p.metodo_pago else "Sin método"
+        metodos[nombre] = metodos.get(nombre, 0) + p.monto
+
+    cfg = db.query(ConfigEmpresa).filter(ConfigEmpresa.id == 1).first()
+
+    data = {
+        "empresa_nombre": (cfg.nombre if cfg else None) or "Andamios y Derivados del Norte",
+        "lunes": inicio_semana,
+        "domingo": fin_semana,
+        "metodos": [{"metodo": k, "monto": round(v, 2)} for k, v in sorted(metodos.items(), key=lambda x: -x[1])],
+        "pagos": [{
+            "folio": p.folio, "fecha": p.fecha,
+            "cliente": p.contrato.cliente.nombre if p.contrato and p.contrato.cliente else "",
+            "contrato": p.contrato.folio if p.contrato else "",
+            "metodo": p.metodo_pago.nombre if p.metodo_pago else "",
+            "monto": p.monto,
+        } for p in pagos],
+        "total_cobrado": round(sum(p.monto for p in pagos), 2),
+        "total_gastos": round(sum(g.monto for g in gastos), 2),
+    }
+
+    output_path = generar_corte_caja(data)
+    return FileResponse(
+        path=str(output_path),
+        filename=f"CorteCaja_{inicio_semana.isoformat()}.pdf",
+        media_type="application/pdf",
     )

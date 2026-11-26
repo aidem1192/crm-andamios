@@ -254,6 +254,23 @@
     </div>
   </div>
 
+  <!-- Corte de caja semanal (PDF) -->
+  <div class="card mb-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="font-semibold text-gray-700">Corte de caja semanal</h2>
+        <p class="text-gray-400 text-xs mt-0.5">PDF con total cobrado por método de pago, detalle de pagos y espacio de firma.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="date" x-model="corteFecha" class="input text-sm py-1">
+        <button @click="descargarCorteCaja()"
+          class="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">
+          📄 Descargar corte
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Cuentas por cobrar -->
   <div class="card mb-5">
     <div class="flex items-center justify-between mb-3">
@@ -508,6 +525,7 @@ function reportesPage() {
     buscaMovimiento: '',
     cuentasPorCobrar: {},
     materialesMasRentados: [],
+    corteFecha: hoy,
     ingresosPorMes: [],
     periodo: {},
     selPeriodo: 'mes',
@@ -579,6 +597,10 @@ function reportesPage() {
         url += `&fecha_ini=${this.rangoIni}&fecha_fin=${this.rangoFin}`;
       }
       window.open(url, '_blank');
+    },
+
+    descargarCorteCaja() {
+      window.open(`/api/reportes/corte-caja?lunes=${this.corteFecha}`, '_blank');
     },
 
     abrirGasto() {
