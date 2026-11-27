@@ -1,4 +1,4 @@
-"""Script temporal de un solo uso: busca contratos por nombre de cliente (cualquier estado)."""
+"""Script temporal de un solo uso: borra el contrato id=1 (AARON CARMONA ESTRADA, de prueba) y registros ligados."""
 import os
 from sqlalchemy import create_engine, text
 
@@ -10,17 +10,25 @@ elif url.startswith("postgresql://"):
 
 engine = create_engine(url, connect_args={"prepare_threshold": None})
 
-with engine.connect() as conn:
-    rows = conn.execute(text("""
-        SELECT c.id, c.folio, cl.nombre, c.estado, c.fecha_inicio, c.fecha_fin, c.created_at
-        FROM contratos c
-        LEFT JOIN clientes cl ON cl.id = c.cliente_id
-        WHERE cl.nombre ILIKE '%carmona%' OR cl.nombre ILIKE '%aaron%'
-        ORDER BY c.id
-    """)).fetchall()
+CONTRATO_ID = 1
 
-print(f"ENCONTRADOS: {len(rows)}", flush=True)
-for r in rows:
-    print(f"  id={r[0]} folio={r[1]} cliente={r[2]!r} estado={r[3]} inicio={r[4]} fin={r[5]} creado={r[6]}", flush=True)
-# stabilize
-# run search 1795738839
+with engine.begin() as conn:
+    row = conn.execute(text("""
+        SELECT c.folio, cl.nombre FROM contratos c
+        LEFT JOIN clientes cl ON cl.id = c.cliente_id
+        WHERE c.id = :id
+    """), {"id": CONTRATO_ID}).fetchone()
+    print(f"Borrando contrato id={CONTRATO_ID}: {row}", flush=True)
+
+    conn.execute(text("""
+        DELETE FROM lineas_nota_remision
+        WHERE nota_id IN (SELECT id FROM notas_remision WHERE contrato_id = :id)
+    """), {"id": CONTRATO_ID})
+    conn.execute(text("DELETE FROM notas_remision WHERE contrato_id = :id"), {"id": CONTRATO_ID})
+    conn.execute(text("UPDATE eventos_agenda SET contrato_id = NULL WHERE contrato_id = :id"), {"id": CONTRATO_ID})
+    conn.execute(text("DELETE FROM cargos_extra WHERE contrato_id = :id"), {"id": CONTRATO_ID})
+    conn.execute(text("DELETE FROM pagos WHERE contrato_id = :id"), {"id": CONTRATO_ID})
+    conn.execute(text("DELETE FROM lineas_contrato WHERE contrato_id = :id"), {"id": CONTRATO_ID})
+    conn.execute(text("DELETE FROM contratos WHERE id = :id"), {"id": CONTRATO_ID})
+
+print("LISTO.", flush=True)
