@@ -261,7 +261,7 @@ def descargar_pagare(contrato_id: int, db: Session = Depends(get_db)):
         lineas_data.append({
             "material": l.material.nombre if l.material else "",
             "cantidad": l.cantidad,
-            "valor_convencional": l.material.precio_venta if l.material else 0,
+            "valor_convencional": (l.material.precio_venta or 0) if l.material else 0,
         })
 
     contrato_data = {
@@ -300,7 +300,7 @@ def descargar_contrato(contrato_id: int, db: Session = Depends(get_db)):
             "cantidad": l.cantidad,
             "precio_unitario": l.precio_unitario,
             "total_diario": l.total_linea,
-            "valor_convencional": l.material.precio_venta if l.material else 0,
+            "valor_convencional": (l.material.precio_venta or 0) if l.material else 0,
         })
 
     contrato_data = {
