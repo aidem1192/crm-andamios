@@ -23,3 +23,4 @@ print(f"ENCONTRADOS: {len(rows)}", flush=True)
 for r in rows:
     print(f"  id={r[0]} folio={r[1]} cliente={r[2]!r} estado={r[3]} inicio={r[4]} fin={r[5]} creado={r[6]}", flush=True)
 # stabilize
+# run search 1795738839
