@@ -76,7 +76,7 @@
               <span :class="estadoBadge(c.estado_recepcion)" x-text="estadoLabel(c.estado_recepcion)"></span>
             </td>
             <td class="py-3">
-              <button @click.stop="confirmarEliminar(c)"
+              <button x-show="esAdmin" @click.stop="confirmarEliminar(c)"
                       class="text-gray-300 hover:text-red-500 transition text-lg leading-none">🗑</button>
             </td>
           </tr>
@@ -248,6 +248,7 @@ function comprasApp() {
   return {
     todos: [], lista: [], materiales: [], cargando: true,
     filtro: '', filtroEstado: '',
+    esAdmin: window.ES_ADMIN,
 
     modal: {
       abierto:false, fecha: new Date().toISOString().slice(0,10),

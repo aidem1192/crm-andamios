@@ -40,7 +40,7 @@
           Volver a Borrador
         </button>
       </template>
-      <button @click="confirmarEliminar()"
+      <button x-show="esAdmin" @click="confirmarEliminar()"
               class="btn-danger text-sm">🗑</button>
     </div>
   </div>
@@ -172,6 +172,7 @@
 function cotizacionDetalle(id) {
   return {
     id, c: null, cargando: true, modalEliminar: false,
+    esAdmin: window.ES_ADMIN,
 
     async cargar() {
       this.cargando = true;

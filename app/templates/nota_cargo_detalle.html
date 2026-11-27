@@ -17,7 +17,7 @@
               class="border border-gray-300 text-gray-600 hover:bg-gray-50 font-medium px-4 py-2 rounded-xl text-sm">
         🖨️ Imprimir
       </button>
-      <button @click="eliminar()"
+      <button x-show="esAdmin" @click="eliminar()"
               class="border border-red-200 text-red-500 hover:bg-red-50 font-medium px-4 py-2 rounded-xl text-sm">
         Eliminar
       </button>
@@ -117,6 +117,7 @@ function notaCargoDetalle(notaId) {
   return {
     nota: null,
     cargando: true,
+    esAdmin: window.ES_ADMIN,
 
     async init() {
       const data = await fetch('/api/notas-cargo/' + notaId).then(r => r.json());

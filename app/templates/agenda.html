@@ -136,11 +136,11 @@
                           :class="ev.completado ? 'text-gray-400' : 'text-green-600'"
                           x-text="ev.completado ? 'Reabrír' : '✓'">
                   </button>
-                  <button @click="abrirModalEvento(ev)"
+                  <button x-show="esAdmin" @click="abrirModalEvento(ev)"
                           class="text-xs px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100 text-blue-600">
                     Editar
                   </button>
-                  <button @click="eliminarEvento(ev)"
+                  <button x-show="esAdmin" @click="eliminarEvento(ev)"
                           class="text-xs px-2 py-0.5 rounded border border-gray-200 hover:bg-red-50 text-red-500">
                     ✕
                   </button>
@@ -234,6 +234,7 @@ function agendaPage() {
     anio: hoy.getFullYear(),
     mes: hoy.getMonth(),       // 0-based
     eventos: [],
+    esAdmin: window.ES_ADMIN,
     diasDelMes: [],
     diaSeleccionado: null,
     eventosDia: [],

@@ -96,7 +96,7 @@
             <td class="py-3 pr-4 text-right font-semibold text-red-600"
                 x-text="'$' + Number(g.monto).toLocaleString('es-MX',{minimumFractionDigits:2})"></td>
             <td class="py-3">
-              <button @click="confirmarEliminar(g)"
+              <button x-show="esAdmin" @click="confirmarEliminar(g)"
                       class="text-gray-300 hover:text-red-500 transition text-lg leading-none">🗑</button>
             </td>
           </tr>
@@ -222,6 +222,7 @@ function gastosApp() {
   return {
     todos: [], lista: [], cargando: true,
     filtro: '', filtroCategoria: '', filtroMetodo: '',
+    esAdmin: window.ES_ADMIN,
 
     categorias: [
       { valor:'combustible',   label:'Combustible',   icono:'⛽' },

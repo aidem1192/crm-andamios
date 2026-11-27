@@ -78,14 +78,14 @@
                     :class="expedienteCompleto(c) ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'">
               📁 Expediente
             </button>
-            <button @click="editarCliente(c)" class="text-xs text-orange-500 hover:underline">Editar</button>
-            <button x-show="!c.lista_negra" @click="abrirModalListaNegra(c)"
+            <button x-show="esAdmin" @click="editarCliente(c)" class="text-xs text-orange-500 hover:underline">Editar</button>
+            <button x-show="esAdmin && !c.lista_negra" @click="abrirModalListaNegra(c)"
                     class="text-xs text-red-500 hover:underline font-medium">⛔ Lista negra</button>
-            <button x-show="c.lista_negra" @click="quitarListaNegra(c)"
+            <button x-show="esAdmin && c.lista_negra" @click="quitarListaNegra(c)"
                     class="text-xs text-green-600 hover:underline font-medium">✓ Quitar</button>
-            <button x-show="!c.descuento_autorizado" @click="autorizarDescuento(c)"
+            <button x-show="esAdmin && !c.descuento_autorizado" @click="autorizarDescuento(c)"
                     class="text-xs text-green-600 hover:underline font-medium">% Autorizar descuento</button>
-            <button x-show="c.descuento_autorizado" @click="quitarAutorizacionDescuento(c)"
+            <button x-show="esAdmin && c.descuento_autorizado" @click="quitarAutorizacionDescuento(c)"
                     class="text-xs text-gray-400 hover:underline font-medium">Quitar autorización</button>
           </div>
         </div>
@@ -164,7 +164,7 @@
                   </template>
                   <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs text-center py-1"
                        x-text="lado === 'ine_frente' ? 'Frente' : 'Reverso'"></div>
-                  <button @click="eliminarDoc(lado)"
+                  <button x-show="esAdmin" @click="eliminarDoc(lado)"
                           class="absolute top-1 right-1 hidden group-hover:flex bg-red-600 text-white rounded-full w-5 h-5 items-center justify-center text-xs">✕</button>
                 </div>
               </template>
@@ -193,7 +193,7 @@
                   📄 Ver comprobante PDF
                 </a>
               </template>
-              <button @click="eliminarDoc('comprobante_domicilio')"
+              <button x-show="esAdmin" @click="eliminarDoc('comprobante_domicilio')"
                       class="absolute top-2 right-2 hidden group-hover:flex bg-red-600 text-white rounded-full w-6 h-6 items-center justify-center text-sm">✕</button>
             </div>
           </template>
@@ -280,6 +280,7 @@
 function clientesPage() {
   return {
     clientes: [], total: 0, page: 1, limit: 100,
+    esAdmin: window.ES_ADMIN,
     q: '', filtroLN: null, filtroDesc: false, modalAbierto: false, editandoId: null, error: '',
     importResult: null,
     form: { nombre: '', telefono: '', domicilio: '', rfc: '', referencias: [] },

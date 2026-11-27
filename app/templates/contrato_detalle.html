@@ -623,7 +623,7 @@
                 <div class="text-gray-600 text-xs" x-text="ce.concepto"></div>
                 <div class="text-gray-400 text-xs" x-text="ce.created_at"></div>
               </div>
-              <button x-show="c.estado === 'activo'" @click="eliminarCargoExtra(ce.id)"
+              <button x-show="esAdmin && c.estado === 'activo'" @click="eliminarCargoExtra(ce.id)"
                       class="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
             </div>
           </template>
@@ -763,6 +763,7 @@
 function contratoDetalle(id) {
   return {
     c: {},
+    esAdmin: window.ES_ADMIN,
     devolucion: {
       fecha_hora: '',
       preview: false,

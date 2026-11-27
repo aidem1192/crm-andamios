@@ -18,9 +18,9 @@
             x-text="(n.estado || '').toUpperCase()"></span>
     </div>
     <div class="flex gap-2">
-      <button x-show="n.estado === 'borrador'" @click="autorizar()"
+      <button x-show="esAdmin && n.estado === 'borrador'" @click="autorizar()"
               class="btn-secondary text-sm">Autorizar</button>
-      <button x-show="n.estado === 'autorizada'" @click="pagar()"
+      <button x-show="esAdmin && n.estado === 'autorizada'" @click="pagar()"
               class="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition text-sm">
         Marcar como pagada
       </button>
@@ -86,7 +86,7 @@
               <td class="py-2 text-right font-bold text-green-700" x-text="'$' + Number(l.salario_neto).toFixed(2)"></td>
               <td class="py-2 text-right">
                 <div class="flex gap-2 justify-end">
-                  <button x-show="n.estado !== 'pagada'" @click="abrirAjuste(l)"
+                  <button x-show="esAdmin && n.estado !== 'pagada'" @click="abrirAjuste(l)"
                           class="text-xs text-blue-600 hover:underline">Ajustar</button>
                   <a :href="'/api/rh/nominas/' + n.id + '/recibo/' + l.empleado_id"
                      target="_blank" class="text-xs text-orange-600 hover:underline">⬇ Recibo</a>
@@ -135,6 +135,7 @@
 function nominaDetalle(id) {
   return {
     n: {},
+    esAdmin: window.ES_ADMIN,
     ajuste: { abierto: false, lineaId: null, nombre: '', otros_ingresos: 0,
               otras_deducciones: 0, observaciones: '', error: '', guardando: false },
 

@@ -14,6 +14,11 @@
   <meta name="apple-mobile-web-app-title" content="ADN CRM">
 
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Rol del usuario en sesión, disponible para cualquier componente Alpine.
+    // Solo admin puede editar o eliminar registros ya existentes.
+    window.ES_ADMIN = {{ 'true' if session_user and session_user.rol == 'admin' else 'false' }};
+  </script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }

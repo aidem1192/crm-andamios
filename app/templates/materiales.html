@@ -93,7 +93,7 @@
                 </template>
               </td>
               <td class="py-2 pl-2">
-                <button @click="editar(m)" class="text-xs text-orange-500 hover:underline">Editar</button>
+                <button x-show="esAdmin" @click="editar(m)" class="text-xs text-orange-500 hover:underline">Editar</button>
               </td>
             </tr>
           </template>
@@ -239,7 +239,7 @@
         </template>
       </div>
 
-      <button @click="modalKit.componentes.push({ pieza_id: '', cantidad: 1 })"
+      <button x-show="esAdmin" @click="modalKit.componentes.push({ pieza_id: '', cantidad: 1 })"
               class="w-full border-2 border-dashed border-gray-200 hover:border-orange-300 text-gray-400
                      hover:text-orange-500 rounded-lg py-2 text-sm font-medium transition mb-4">
         + Agregar pieza
@@ -249,7 +249,7 @@
 
       <div class="flex justify-end gap-2">
         <button @click="modalKit.abierto = false" class="btn-secondary text-sm">Cancelar</button>
-        <button @click="guardarComponentes()" :disabled="modalKit.guardando"
+        <button x-show="esAdmin" @click="guardarComponentes()" :disabled="modalKit.guardando"
                 class="btn-primary text-sm disabled:opacity-40">
           <span x-show="!modalKit.guardando">Guardar componentes</span>
           <span x-show="modalKit.guardando">Guardando...</span>
@@ -264,6 +264,7 @@
 function materialesPage() {
   return {
     materiales: [], piezas: [], q: '',
+    esAdmin: window.ES_ADMIN,
     modalAbierto: false, editandoId: null, error: '',
     importResult: null,
     form: { nombre:'', tipo:'pieza', estado:'bueno', ubicacion:'bodega',
