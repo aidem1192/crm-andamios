@@ -7,7 +7,7 @@ from datetime import date, datetime
 from app.database import get_db, Contrato, LineaContrato, Cliente, Material, Usuario, CargoExtra
 from app.services.numero_a_letra import numero_a_letra
 from app.services.devolucion import calcular_devolucion, fecha_inicio_efectiva
-from app.auth import verify_password, log_audit
+from app.auth import verify_password, log_audit, require_admin
 import os
 
 router = APIRouter(prefix="/api/contratos", tags=["contratos"])
@@ -160,7 +160,7 @@ def estado_material(contrato_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
+def crear_contrato(data: ContratoCreate, request: Request, db: Session = Depends(get_db)):
     # Validar cliente
     cliente = db.query(Cliente).filter(Cliente.id == data.cliente_id).first()
     if not cliente:
@@ -241,6 +241,8 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
         )
         db.add(cargo)
 
+    log_audit(db, request, "crear_contrato", "contrato", contrato.id,
+              f"Contrato {contrato.folio} creado para {cliente.nombre}")
     db.commit()
     db.refresh(contrato)
     return {"id": contrato.id, "folio": contrato.folio}
@@ -401,7 +403,8 @@ def verificar_devolucion(contrato_id: int, fecha_devolucion: str, db: Session = 
 
 
 @router.post("/{contrato_id}/devolucion")
-def registrar_devolucion(contrato_id: int, body: DevolucionBody, db: Session = Depends(get_db)):
+def registrar_devolucion(contrato_id: int, body: DevolucionBody, request: Request,
+                          db: Session = Depends(get_db)):
     """
     Registra la devolución real del material y determina si se cobra día extra.
     Cambia el estado del contrato a 'terminado'.
@@ -427,6 +430,8 @@ def registrar_devolucion(contrato_id: int, body: DevolucionBody, db: Session = D
         c.iva = round(c.iva + nuevo_iva, 2)
         c.dias += 1
 
+    log_audit(db, request, "registrar_devolucion", "contrato", c.id,
+              f"Devolución registrada para {c.folio}" + (" (día extra cobrado)" if resultado["dia_extra"] else ""))
     db.commit()
     db.refresh(c)
 
@@ -481,7 +486,7 @@ def agregar_cargo_extra(contrato_id: int, body: CargoExtraIn, request: Request,
 
 @router.delete("/{contrato_id}/cargos-extra/{cargo_id}")
 def eliminar_cargo_extra(contrato_id: int, cargo_id: int, request: Request,
-                         db: Session = Depends(get_db)):
+                         db: Session = Depends(get_db), _=Depends(require_admin)):
     ce = db.query(CargoExtra).filter(
         CargoExtra.id == cargo_id,
         CargoExtra.contrato_id == contrato_id,

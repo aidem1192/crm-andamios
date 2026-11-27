@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db, Cliente, ReferenciaCliente
 from app.services import excel_io
+from app.auth import require_admin, log_audit
 
 router = APIRouter(prefix="/api/clientes", tags=["clientes"])
 
@@ -77,7 +78,7 @@ def descargar_plantilla_clientes():
 
 
 @router.post("/importar-excel")
-async def importar_clientes_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+async def importar_clientes_excel(request: Request, archivo: UploadFile = File(...), db: Session = Depends(get_db)):
     if not archivo.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El archivo debe ser un Excel (.xlsx)")
 
@@ -119,6 +120,8 @@ async def importar_clientes_excel(archivo: UploadFile = File(...), db: Session =
             db.add(ref)
         importados += 1
 
+    log_audit(db, request, "importar_clientes", "cliente", None,
+              f"Importación Excel: {importados} clientes creados")
     db.commit()
     return {"importados": importados, "total_filas": len(filas), "errores": errores}
 
@@ -132,7 +135,7 @@ def obtener_cliente(cliente_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def crear_cliente(data: ClienteCreate, db: Session = Depends(get_db)):
+def crear_cliente(data: ClienteCreate, request: Request, db: Session = Depends(get_db)):
     cliente = Cliente(
         nombre=data.nombre,
         telefono=data.telefono,
@@ -145,13 +148,15 @@ def crear_cliente(data: ClienteCreate, db: Session = Depends(get_db)):
     for ref in data.referencias:
         r = ReferenciaCliente(cliente_id=cliente.id, **ref.model_dump())
         db.add(r)
+    log_audit(db, request, "crear_cliente", "cliente", cliente.id, f"Cliente creado: {cliente.nombre}")
     db.commit()
     db.refresh(cliente)
     return _cliente_dict(cliente)
 
 
 @router.put("/{cliente_id}")
-def actualizar_cliente(cliente_id: int, data: ClienteUpdate, db: Session = Depends(get_db)):
+def actualizar_cliente(cliente_id: int, data: ClienteUpdate, request: Request,
+                        db: Session = Depends(get_db), _=Depends(require_admin)):
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -161,16 +166,19 @@ def actualizar_cliente(cliente_id: int, data: ClienteUpdate, db: Session = Depen
     for ref in data.referencias:
         r = ReferenciaCliente(cliente_id=cliente_id, **ref.model_dump())
         db.add(r)
+    log_audit(db, request, "editar_cliente", "cliente", cliente_id, f"Cliente editado: {cliente.nombre}")
     db.commit()
     db.refresh(cliente)
     return _cliente_dict(cliente)
 
 
 @router.delete("/{cliente_id}")
-def eliminar_cliente(cliente_id: int, db: Session = Depends(get_db)):
+def eliminar_cliente(cliente_id: int, request: Request,
+                      db: Session = Depends(get_db), _=Depends(require_admin)):
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    log_audit(db, request, "eliminar_cliente", "cliente", cliente_id, f"Cliente eliminado: {cliente.nombre}")
     db.delete(cliente)
     db.commit()
     return {"ok": True}
@@ -181,42 +189,53 @@ class ListaNegraBody(BaseModel):
 
 
 @router.post("/{cliente_id}/lista-negra")
-def agregar_lista_negra(cliente_id: int, body: ListaNegraBody, db: Session = Depends(get_db)):
+def agregar_lista_negra(cliente_id: int, body: ListaNegraBody, request: Request,
+                         db: Session = Depends(get_db), _=Depends(require_admin)):
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     cliente.lista_negra = True
     cliente.motivo_lista_negra = body.motivo
+    log_audit(db, request, "agregar_lista_negra", "cliente", cliente_id,
+              f"{cliente.nombre} agregado a lista negra: {body.motivo or '—'}")
     db.commit()
     return _cliente_dict(cliente)
 
 
 @router.delete("/{cliente_id}/lista-negra")
-def quitar_lista_negra(cliente_id: int, db: Session = Depends(get_db)):
+def quitar_lista_negra(cliente_id: int, request: Request,
+                        db: Session = Depends(get_db), _=Depends(require_admin)):
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     cliente.lista_negra = False
     cliente.motivo_lista_negra = None
+    log_audit(db, request, "quitar_lista_negra", "cliente", cliente_id, f"{cliente.nombre} quitado de lista negra")
     db.commit()
     return _cliente_dict(cliente)
 
 
 @router.post("/{cliente_id}/descuento-autorizado")
-def autorizar_descuento(cliente_id: int, db: Session = Depends(get_db)):
+def autorizar_descuento(cliente_id: int, request: Request,
+                         db: Session = Depends(get_db), _=Depends(require_admin)):
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     cliente.descuento_autorizado = True
+    log_audit(db, request, "autorizar_descuento", "cliente", cliente_id,
+              f"Descuento autorizado para: {cliente.nombre}")
     db.commit()
     return _cliente_dict(cliente)
 
 
 @router.delete("/{cliente_id}/descuento-autorizado")
-def quitar_autorizacion_descuento(cliente_id: int, db: Session = Depends(get_db)):
+def quitar_autorizacion_descuento(cliente_id: int, request: Request,
+                                   db: Session = Depends(get_db), _=Depends(require_admin)):
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     cliente.descuento_autorizado = False
+    log_audit(db, request, "quitar_autorizacion_descuento", "cliente", cliente_id,
+              f"Autorización de descuento quitada para: {cliente.nombre}")
     db.commit()
     return _cliente_dict(cliente)

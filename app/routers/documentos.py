@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from pathlib import Path
 import shutil
@@ -6,6 +6,7 @@ import uuid
 import os
 
 from app.database import get_db, DocumentoCliente, Cliente
+from app.auth import require_admin, log_audit
 
 router = APIRouter(prefix="/api/clientes", tags=["documentos"])
 
@@ -26,6 +27,7 @@ def _asegurar_dir(cliente_id: int) -> Path:
 @router.post("/{cliente_id}/documentos", status_code=201)
 async def subir_documento(
     cliente_id: int,
+    request: Request,
     tipo: str = Form(...),
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -57,6 +59,9 @@ async def subir_documento(
         ruta=ruta_relativa,
     )
     db.add(doc)
+    db.flush()
+    log_audit(db, request, "subir_documento", "documento_cliente", doc.id,
+              f"Documento '{tipo}' subido para {cliente.nombre}")
     db.commit()
     db.refresh(doc)
     return _dict(doc)
@@ -74,7 +79,8 @@ def listar_documentos(cliente_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{cliente_id}/documentos/{doc_id}")
-def eliminar_documento(cliente_id: int, doc_id: int, db: Session = Depends(get_db)):
+def eliminar_documento(cliente_id: int, doc_id: int, request: Request,
+                        db: Session = Depends(get_db), _=Depends(require_admin)):
     doc = db.query(DocumentoCliente).filter(
         DocumentoCliente.id == doc_id,
         DocumentoCliente.cliente_id == cliente_id,
@@ -85,6 +91,8 @@ def eliminar_documento(cliente_id: int, doc_id: int, db: Session = Depends(get_d
     ruta_fisica = BASE_DIR / "data" / "uploads" / doc.ruta
     if ruta_fisica.exists():
         ruta_fisica.unlink()
+    log_audit(db, request, "eliminar_documento", "documento_cliente", doc_id,
+              f"Documento eliminado: {doc.nombre_archivo}")
     db.delete(doc)
     db.commit()
     return {"ok": True}

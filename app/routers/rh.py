@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -6,6 +6,7 @@ from typing import Optional, List
 from datetime import date, timedelta
 from app.database import get_db, Empleado, Asistencia, Nomina, LineaNomina
 from app.services.calcular_nomina import calcular_linea_nomina
+from app.auth import require_admin, log_audit
 
 router = APIRouter(prefix="/api/rh", tags=["rh"])
 
@@ -92,33 +93,39 @@ def obtener_empleado(emp_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/empleados", status_code=201)
-def crear_empleado(data: EmpleadoCreate, db: Session = Depends(get_db)):
+def crear_empleado(data: EmpleadoCreate, request: Request, db: Session = Depends(get_db)):
     e = Empleado(**data.model_dump())
     db.add(e)
+    db.flush()
+    log_audit(db, request, "crear_empleado", "empleado", e.id, f"Empleado creado: {e.nombre}")
     db.commit()
     db.refresh(e)
     return _empleado_dict(e)
 
 
 @router.put("/empleados/{emp_id}")
-def actualizar_empleado(emp_id: int, data: EmpleadoCreate, db: Session = Depends(get_db)):
+def actualizar_empleado(emp_id: int, data: EmpleadoCreate, request: Request,
+                         db: Session = Depends(get_db), _=Depends(require_admin)):
     e = db.query(Empleado).filter(Empleado.id == emp_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
     for k, v in data.model_dump().items():
         setattr(e, k, v)
+    log_audit(db, request, "editar_empleado", "empleado", emp_id, f"Empleado editado: {e.nombre}")
     db.commit()
     db.refresh(e)
     return _empleado_dict(e)
 
 
 @router.delete("/empleados/{emp_id}")
-def dar_baja_empleado(emp_id: int, fecha_baja: Optional[date] = None, db: Session = Depends(get_db)):
+def dar_baja_empleado(emp_id: int, request: Request, fecha_baja: Optional[date] = None,
+                       db: Session = Depends(get_db), _=Depends(require_admin)):
     e = db.query(Empleado).filter(Empleado.id == emp_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
     e.activo = False
     e.fecha_baja = fecha_baja or date.today()
+    log_audit(db, request, "dar_baja_empleado", "empleado", emp_id, f"Empleado dado de baja: {e.nombre}")
     db.commit()
     return {"ok": True}
 
@@ -147,7 +154,7 @@ def listar_asistencia(fecha_inicio: Optional[date] = None, fecha_fin: Optional[d
 
 
 @router.post("/asistencia", status_code=201)
-def registrar_asistencia(data: AsistenciaCreate, db: Session = Depends(get_db)):
+def registrar_asistencia(data: AsistenciaCreate, request: Request, db: Session = Depends(get_db)):
     existente = db.query(Asistencia).filter(
         Asistencia.empleado_id == data.empleado_id,
         Asistencia.fecha == data.fecha,
@@ -156,18 +163,23 @@ def registrar_asistencia(data: AsistenciaCreate, db: Session = Depends(get_db)):
         # Actualizar en lugar de duplicar
         for k, v in data.model_dump().items():
             setattr(existente, k, v)
+        log_audit(db, request, "editar_asistencia", "asistencia", existente.id,
+                  f"Asistencia actualizada: empleado {data.empleado_id}, {data.fecha}")
         db.commit()
         return {"id": existente.id, "updated": True}
 
     a = Asistencia(**data.model_dump())
     db.add(a)
+    db.flush()
+    log_audit(db, request, "registrar_asistencia", "asistencia", a.id,
+              f"Asistencia registrada: empleado {data.empleado_id}, {data.fecha}")
     db.commit()
     db.refresh(a)
     return {"id": a.id, "updated": False}
 
 
 @router.post("/asistencia/bulk", status_code=201)
-def registrar_asistencia_bulk(data: AsistenciaBulkCreate, db: Session = Depends(get_db)):
+def registrar_asistencia_bulk(data: AsistenciaBulkCreate, request: Request, db: Session = Depends(get_db)):
     resultados = []
     for reg in data.registros:
         existente = db.query(Asistencia).filter(
@@ -182,6 +194,8 @@ def registrar_asistencia_bulk(data: AsistenciaBulkCreate, db: Session = Depends(
             a = Asistencia(**reg.model_dump(), fecha=data.fecha)
             db.add(a)
             resultados.append({"empleado_id": reg.empleado_id, "updated": False})
+    log_audit(db, request, "registrar_asistencia_bulk", "asistencia", None,
+              f"Asistencia masiva registrada para {data.fecha}: {len(resultados)} empleados")
     db.commit()
     return {"registrados": len(resultados), "detalle": resultados}
 
@@ -265,7 +279,7 @@ def obtener_nomina(nomina_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/nominas", status_code=201)
-def crear_nomina(data: NominaCreate, db: Session = Depends(get_db)):
+def crear_nomina(data: NominaCreate, request: Request, db: Session = Depends(get_db)):
     """Crea la nómina y pre-calcula líneas para todos los empleados activos."""
     if data.fecha_fin < data.fecha_inicio:
         raise HTTPException(status_code=400, detail="fecha_fin debe ser >= fecha_inicio")
@@ -321,13 +335,16 @@ def crear_nomina(data: NominaCreate, db: Session = Depends(get_db)):
     nomina.total_bruto = round(total_bruto, 2)
     nomina.total_deducciones = round(total_ded, 2)
     nomina.total_neto = round(total_neto, 2)
+    log_audit(db, request, "crear_nomina", "nomina", nomina.id,
+              f"Nómina {nomina.folio} creada ({data.fecha_inicio} a {data.fecha_fin})")
     db.commit()
     db.refresh(nomina)
     return {"id": nomina.id, "folio": nomina.folio}
 
 
 @router.put("/nominas/{nomina_id}/linea/{linea_id}")
-def ajustar_linea(nomina_id: int, linea_id: int, data: AjusteLineaNomina, db: Session = Depends(get_db)):
+def ajustar_linea(nomina_id: int, linea_id: int, data: AjusteLineaNomina, request: Request,
+                   db: Session = Depends(get_db), _=Depends(require_admin)):
     """Permite editar bonos u otras deducciones de una línea y recalcular el neto."""
     n = db.query(Nomina).filter(Nomina.id == nomina_id).first()
     if not n:
@@ -352,30 +369,36 @@ def ajustar_linea(nomina_id: int, linea_id: int, data: AjusteLineaNomina, db: Se
     n.total_bruto = round(sum(ll.salario_bruto + ll.otros_ingresos for ll in n.lineas), 2)
     n.total_deducciones = round(sum(ll.imss_obrero + ll.isr + ll.otras_deducciones for ll in n.lineas), 2)
     n.total_neto = round(sum(ll.salario_neto for ll in n.lineas), 2)
+    log_audit(db, request, "ajustar_linea_nomina", "nomina", nomina_id,
+              f"Línea de {n.folio} ajustada (empleado línea {linea_id})")
     db.commit()
     return {"ok": True, "salario_neto": l.salario_neto}
 
 
 @router.post("/nominas/{nomina_id}/autorizar")
-def autorizar_nomina(nomina_id: int, db: Session = Depends(get_db)):
+def autorizar_nomina(nomina_id: int, request: Request,
+                      db: Session = Depends(get_db), _=Depends(require_admin)):
     n = db.query(Nomina).filter(Nomina.id == nomina_id).first()
     if not n:
         raise HTTPException(status_code=404, detail="Nómina no encontrada")
     if n.estado != "borrador":
         raise HTTPException(status_code=400, detail=f"La nómina ya está en estado '{n.estado}'")
     n.estado = "autorizada"
+    log_audit(db, request, "autorizar_nomina", "nomina", nomina_id, f"Nómina {n.folio} autorizada")
     db.commit()
     return {"ok": True, "estado": n.estado}
 
 
 @router.post("/nominas/{nomina_id}/pagar")
-def pagar_nomina(nomina_id: int, db: Session = Depends(get_db)):
+def pagar_nomina(nomina_id: int, request: Request,
+                  db: Session = Depends(get_db), _=Depends(require_admin)):
     n = db.query(Nomina).filter(Nomina.id == nomina_id).first()
     if not n:
         raise HTTPException(status_code=404, detail="Nómina no encontrada")
     if n.estado != "autorizada":
         raise HTTPException(status_code=400, detail="La nómina debe estar autorizada antes de marcarla como pagada")
     n.estado = "pagada"
+    log_audit(db, request, "pagar_nomina", "nomina", nomina_id, f"Nómina {n.folio} marcada como pagada")
     db.commit()
     return {"ok": True, "estado": n.estado}
 

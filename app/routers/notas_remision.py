@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime
 from app.database import get_db, NotaRemision, LineaNotaRemision, Contrato, LineaContrato, Material
+from app.auth import log_audit
 
 router = APIRouter(prefix="/api/notas-remision", tags=["notas-remision"])
 
@@ -80,7 +81,7 @@ def obtener_nota(nota_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def crear_nota(data: NotaRemisionCreate, db: Session = Depends(get_db)):
+def crear_nota(data: NotaRemisionCreate, request: Request, db: Session = Depends(get_db)):
     if data.tipo not in ("entrega", "devolucion", "salida"):
         raise HTTPException(status_code=400, detail="Tipo debe ser 'entrega' o 'devolucion'")
 
@@ -137,6 +138,8 @@ def crear_nota(data: NotaRemisionCreate, db: Session = Depends(get_db)):
             contrato.estado = "terminado"
             contrato.fecha_devolucion = datetime.utcnow()
 
+    log_audit(db, request, "crear_nota_remision", "nota_remision", nota.id,
+              f"Nota {nota.folio} ({data.tipo}) para contrato {contrato.folio}")
     db.commit()
     db.refresh(nota)
     return {"id": nota.id, "folio": nota.folio}

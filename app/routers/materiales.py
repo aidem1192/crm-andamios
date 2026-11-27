@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db, Material, LineaKit, LineaContrato, Contrato
 from app.services import excel_io
+from app.auth import require_admin, log_audit
 
 router = APIRouter(prefix="/api/materiales", tags=["materiales"])
 
@@ -104,7 +105,7 @@ def descargar_plantilla_materiales():
 
 
 @router.post("/importar-excel")
-async def importar_materiales_excel(archivo: UploadFile = File(...), db: Session = Depends(get_db)):
+async def importar_materiales_excel(request: Request, archivo: UploadFile = File(...), db: Session = Depends(get_db)):
     if not archivo.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="El archivo debe ser un Excel (.xlsx)")
 
@@ -170,6 +171,8 @@ async def importar_materiales_excel(archivo: UploadFile = File(...), db: Session
         db.add(m)
         importados += 1
 
+    log_audit(db, request, "importar_materiales", "material", None,
+              f"Importación Excel: {importados} materiales creados")
     db.commit()
     return {"importados": importados, "total_filas": len(filas), "errores": errores}
 
@@ -200,8 +203,8 @@ def get_componentes(material_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{material_id}/componentes")
-def set_componentes(material_id: int, componentes: List[ComponenteIn],
-                    db: Session = Depends(get_db)):
+def set_componentes(material_id: int, componentes: List[ComponenteIn], request: Request,
+                    db: Session = Depends(get_db), _=Depends(require_admin)):
     m = db.query(Material).filter(Material.id == material_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Material no encontrado")
@@ -222,36 +225,44 @@ def set_componentes(material_id: int, componentes: List[ComponenteIn],
     db.query(LineaKit).filter(LineaKit.kit_id == material_id).delete()
     for c in componentes:
         db.add(LineaKit(kit_id=material_id, pieza_id=c.pieza_id, cantidad=c.cantidad))
+    log_audit(db, request, "editar_componentes_kit", "material", material_id,
+              f"Componentes actualizados para kit: {m.nombre}")
     db.commit()
     return {"ok": True, "total": len(componentes)}
 
 
 @router.post("", status_code=201)
-def crear_material(data: MaterialCreate, db: Session = Depends(get_db)):
+def crear_material(data: MaterialCreate, request: Request, db: Session = Depends(get_db)):
     m = Material(**data.model_dump())
     db.add(m)
+    db.flush()
+    log_audit(db, request, "crear_material", "material", m.id, f"Material creado: {m.nombre}")
     db.commit()
     db.refresh(m)
     return _material_dict(m, db)
 
 
 @router.put("/{material_id}")
-def actualizar_material(material_id: int, data: MaterialUpdate, db: Session = Depends(get_db)):
+def actualizar_material(material_id: int, data: MaterialUpdate, request: Request,
+                         db: Session = Depends(get_db), _=Depends(require_admin)):
     m = db.query(Material).filter(Material.id == material_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Material no encontrado")
     for field, val in data.model_dump().items():
         setattr(m, field, val)
+    log_audit(db, request, "editar_material", "material", material_id, f"Material editado: {m.nombre}")
     db.commit()
     db.refresh(m)
     return _material_dict(m, db)
 
 
 @router.delete("/{material_id}")
-def eliminar_material(material_id: int, db: Session = Depends(get_db)):
+def eliminar_material(material_id: int, request: Request,
+                       db: Session = Depends(get_db), _=Depends(require_admin)):
     m = db.query(Material).filter(Material.id == material_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Material no encontrado")
     m.activo = False
+    log_audit(db, request, "eliminar_material", "material", material_id, f"Material eliminado: {m.nombre}")
     db.commit()
     return {"ok": True}

@@ -8,15 +8,9 @@ from typing import Optional
 from datetime import datetime
 
 from app.database import get_db, ConfigEmpresa, Usuario, AuditLog
-from app.auth import hash_password, verify_password, log_audit, get_session_user
+from app.auth import hash_password, verify_password, log_audit, get_session_user, require_admin as _require_admin
 
 router = APIRouter()
-
-
-def _require_admin(request: Request):
-    user = get_session_user(request)
-    if not user or user.get("rol") != "admin":
-        raise HTTPException(status_code=403, detail="Solo el administrador puede realizar esta acción")
 
 # Vive dentro de data/ (donde está el volumen persistente en producción) en vez de
 # static/, para que un logo subido por el usuario no se pierda en el próximo despliegue.

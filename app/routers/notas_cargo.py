@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime
 from app.database import get_db, NotaCargo, LineaNotaCargo, Cliente, Material
+from app.auth import require_admin, log_audit
 
 router = APIRouter(prefix="/api/notas-cargo", tags=["notas_cargo"])
 
@@ -59,7 +60,7 @@ def listar_notas(db: Session = Depends(get_db)):
 
 
 @router.post("")
-def crear_nota(data: NotaCargoIn, db: Session = Depends(get_db)):
+def crear_nota(data: NotaCargoIn, request: Request, db: Session = Depends(get_db)):
     cliente = db.query(Cliente).filter(Cliente.id == data.cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -88,6 +89,8 @@ def crear_nota(data: NotaCargoIn, db: Session = Depends(get_db)):
         )
         db.add(linea)
 
+    log_audit(db, request, "crear_nota_cargo", "nota_cargo", nota.id,
+              f"Nota de cargo {nota.folio} creada para {cliente.nombre}")
     db.commit()
     db.refresh(nota)
     return {"id": nota.id, "folio": nota.folio}
@@ -102,10 +105,12 @@ def obtener_nota(nota_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{nota_id}")
-def eliminar_nota(nota_id: int, db: Session = Depends(get_db)):
+def eliminar_nota(nota_id: int, request: Request,
+                   db: Session = Depends(get_db), _=Depends(require_admin)):
     nota = db.query(NotaCargo).filter(NotaCargo.id == nota_id).first()
     if not nota:
         raise HTTPException(status_code=404, detail="Nota de cargo no encontrada")
+    log_audit(db, request, "eliminar_nota_cargo", "nota_cargo", nota_id, f"Nota de cargo {nota.folio} eliminada")
     db.delete(nota)
     db.commit()
     return {"ok": True}

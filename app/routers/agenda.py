@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import calendar
 
 from app.database import get_db, EventoAgenda, Contrato, NotaRemision, Pago, Cliente
-from app.auth import log_audit
+from app.auth import log_audit, require_admin
 
 router = APIRouter()
 
@@ -139,7 +139,7 @@ def crear_evento(data: EventoIn, request: Request, db: Session = Depends(get_db)
 
 @router.put("/api/agenda/eventos/{evento_id}")
 def editar_evento(evento_id: int, data: EventoIn, request: Request,
-                  db: Session = Depends(get_db)):
+                  db: Session = Depends(get_db), _=Depends(require_admin)):
     e = db.query(EventoAgenda).filter(EventoAgenda.id == evento_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Evento no encontrado")
@@ -166,7 +166,8 @@ def completar_evento(evento_id: int, request: Request, db: Session = Depends(get
 
 
 @router.delete("/api/agenda/eventos/{evento_id}")
-def eliminar_evento(evento_id: int, request: Request, db: Session = Depends(get_db)):
+def eliminar_evento(evento_id: int, request: Request,
+                     db: Session = Depends(get_db), _=Depends(require_admin)):
     e = db.query(EventoAgenda).filter(EventoAgenda.id == evento_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Evento no encontrado")

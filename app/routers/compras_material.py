@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date
 from app.database import get_db, CompraMaterial, LineaCompraMaterial, Material, Gasto
+from app.auth import require_admin, log_audit
 
 router = APIRouter(prefix="/api/compras-material", tags=["compras_material"])
 
@@ -84,7 +85,7 @@ def obtener(compra_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def crear(data: CompraMaterialIn, db: Session = Depends(get_db)):
+def crear(data: CompraMaterialIn, request: Request, db: Session = Depends(get_db)):
     if not data.lineas:
         raise HTTPException(400, "Agrega al menos un material")
     if data.metodo_pago not in METODOS:
@@ -132,13 +133,16 @@ def crear(data: CompraMaterialIn, db: Session = Depends(get_db)):
             total_linea=round(l.cantidad_comprada * l.precio_unitario, 2),
         ))
 
+    log_audit(db, request, "crear_compra_material", "compra_material", compra.id,
+              f"Compra {folio} registrada por ${total:.2f}" + (f" a {data.proveedor}" if data.proveedor else ""))
     db.commit()
     db.refresh(compra)
     return _compra_dict(compra)
 
 
 @router.put("/{compra_id}/lineas/{linea_id}")
-def actualizar_recepcion(compra_id: int, linea_id: int, data: RecepcionIn, db: Session = Depends(get_db)):
+def actualizar_recepcion(compra_id: int, linea_id: int, data: RecepcionIn, request: Request,
+                          db: Session = Depends(get_db)):
     compra = db.query(CompraMaterial).filter(CompraMaterial.id == compra_id).first()
     if not compra:
         raise HTTPException(404, "Compra no encontrada")
@@ -155,6 +159,8 @@ def actualizar_recepcion(compra_id: int, linea_id: int, data: RecepcionIn, db: S
         material = db.query(Material).filter(Material.id == linea.material_id).first()
         material.stock = (material.stock or 0) + delta
         linea.cantidad_recibida = data.cantidad_recibida
+        log_audit(db, request, "recibir_material", "compra_material", compra.id,
+                  f"{material.nombre}: {data.cantidad_recibida}/{linea.cantidad_comprada} recibido (compra {compra.folio})")
 
     _recalcular_estado(compra)
     db.commit()
@@ -163,7 +169,8 @@ def actualizar_recepcion(compra_id: int, linea_id: int, data: RecepcionIn, db: S
 
 
 @router.delete("/{compra_id}")
-def eliminar(compra_id: int, db: Session = Depends(get_db)):
+def eliminar(compra_id: int, request: Request,
+             db: Session = Depends(get_db), _=Depends(require_admin)):
     compra = db.query(CompraMaterial).filter(CompraMaterial.id == compra_id).first()
     if not compra:
         raise HTTPException(404, "Compra no encontrada")
@@ -173,6 +180,8 @@ def eliminar(compra_id: int, db: Session = Depends(get_db)):
         gasto = db.query(Gasto).filter(Gasto.id == compra.gasto_id).first()
         if gasto:
             db.delete(gasto)
+    log_audit(db, request, "eliminar_compra_material", "compra_material", compra_id,
+              f"Compra {compra.folio} eliminada")
     db.delete(compra)
     db.commit()
     return {"ok": True}

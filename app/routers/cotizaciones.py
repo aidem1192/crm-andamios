@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date
 from app.database import get_db, Cotizacion, LineaCotizacion, Cliente
+from app.auth import require_admin, log_audit
 
 router = APIRouter(prefix="/api/cotizaciones", tags=["cotizaciones"])
 
@@ -106,7 +107,7 @@ def obtener(cot_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def crear(data: CotizacionIn, db: Session = Depends(get_db)):
+def crear(data: CotizacionIn, request: Request, db: Session = Depends(get_db)):
     if not data.lineas:
         raise HTTPException(400, "Agrega al menos un concepto")
 
@@ -145,28 +146,33 @@ def crear(data: CotizacionIn, db: Session = Depends(get_db)):
             total_linea=_total_linea(l, dias_renta),
         ))
 
+    log_audit(db, request, "crear_cotizacion", "cotizacion", cot.id, f"Cotización {cot.folio} creada")
     db.commit()
     db.refresh(cot)
     return {"id": cot.id, "folio": cot.folio}
 
 
 @router.patch("/{cot_id}/estado")
-def cambiar_estado(cot_id: int, estado: str, db: Session = Depends(get_db)):
+def cambiar_estado(cot_id: int, estado: str, request: Request, db: Session = Depends(get_db)):
     c = db.query(Cotizacion).filter(Cotizacion.id == cot_id).first()
     if not c:
         raise HTTPException(404, "Cotización no encontrada")
     if estado not in ("borrador", "enviada", "aceptada", "rechazada"):
         raise HTTPException(400, "Estado inválido")
     c.estado = estado
+    log_audit(db, request, "cambiar_estado_cotizacion", "cotizacion", cot_id,
+              f"Cotización {c.folio} cambiada a {estado}")
     db.commit()
     return {"ok": True}
 
 
 @router.delete("/{cot_id}")
-def eliminar(cot_id: int, db: Session = Depends(get_db)):
+def eliminar(cot_id: int, request: Request,
+             db: Session = Depends(get_db), _=Depends(require_admin)):
     c = db.query(Cotizacion).filter(Cotizacion.id == cot_id).first()
     if not c:
         raise HTTPException(404, "Cotización no encontrada")
+    log_audit(db, request, "eliminar_cotizacion", "cotizacion", cot_id, f"Cotización {c.folio} eliminada")
     db.delete(c)
     db.commit()
     return {"ok": True}

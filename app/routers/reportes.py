@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date as SADate
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.database import get_db, Contrato, Cliente, Material, LineaContrato, Pago, MetodoPago, Gasto, NotaRemision
 from app.services.saldo import calcular_saldo, estado_pago_de
 from app.services.devolucion import calcular_devolucion
+from app.auth import require_admin, log_audit
 import io
 
 router = APIRouter(prefix="/api/reportes", tags=["reportes"])
@@ -421,9 +422,11 @@ def listar_gastos(
 
 
 @router.post("/gastos", status_code=201)
-def crear_gasto(data: GastoCreate, db: Session = Depends(get_db)):
+def crear_gasto(data: GastoCreate, request: Request, db: Session = Depends(get_db)):
     g = Gasto(**data.model_dump())
     db.add(g)
+    db.flush()
+    log_audit(db, request, "crear_gasto", "gasto", g.id, f"Gasto registrado: {g.concepto} ${g.monto:.2f}")
     db.commit()
     db.refresh(g)
     return {"id": g.id, "fecha": g.fecha.isoformat(), "concepto": g.concepto,
@@ -431,12 +434,14 @@ def crear_gasto(data: GastoCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/gastos/{gasto_id}")
-def actualizar_gasto(gasto_id: int, data: GastoCreate, db: Session = Depends(get_db)):
+def actualizar_gasto(gasto_id: int, data: GastoCreate, request: Request,
+                      db: Session = Depends(get_db), _=Depends(require_admin)):
     g = db.query(Gasto).filter(Gasto.id == gasto_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
     for k, v in data.model_dump().items():
         setattr(g, k, v)
+    log_audit(db, request, "editar_gasto", "gasto", gasto_id, f"Gasto editado: {g.concepto} ${g.monto:.2f}")
     db.commit()
     db.refresh(g)
     return {"id": g.id, "fecha": g.fecha.isoformat(), "concepto": g.concepto,
@@ -444,10 +449,12 @@ def actualizar_gasto(gasto_id: int, data: GastoCreate, db: Session = Depends(get
 
 
 @router.delete("/gastos/{gasto_id}")
-def eliminar_gasto(gasto_id: int, db: Session = Depends(get_db)):
+def eliminar_gasto(gasto_id: int, request: Request,
+                    db: Session = Depends(get_db), _=Depends(require_admin)):
     g = db.query(Gasto).filter(Gasto.id == gasto_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    log_audit(db, request, "eliminar_gasto", "gasto", gasto_id, f"Gasto eliminado: {g.concepto} ${g.monto:.2f}")
     db.delete(g)
     db.commit()
     return {"ok": True}

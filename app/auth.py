@@ -1,5 +1,5 @@
 """Helpers de autenticación, sesión y auditoría."""
-from fastapi import Request
+from fastapi import Request, HTTPException
 from sqlalchemy.orm import Session
 from app.database import AuditLog
 import bcrypt
@@ -31,6 +31,14 @@ def require_auth(request: Request):
 
 class _AuthRedirect(Exception):
     pass
+
+
+def require_admin(request: Request):
+    """Lanza 403 si el usuario en sesión no es admin. Usar como Depends en
+    endpoints que editan o eliminan registros ya existentes."""
+    user = get_session_user(request)
+    if not user or user.get("rol") != "admin":
+        raise HTTPException(status_code=403, detail="Solo el administrador puede realizar esta acción")
 
 
 def log_audit(db: Session, request: Request, accion: str,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -6,6 +6,7 @@ from typing import Optional
 from datetime import date
 from app.database import get_db, Pago, Contrato, MetodoPago
 from app.services.saldo import calcular_saldo, estado_pago_de
+from app.auth import require_admin, log_audit
 
 router = APIRouter(tags=["pagos"])
 
@@ -43,27 +44,32 @@ def crear_metodo(data: MetodoPagoCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/api/metodos-pago/{metodo_id}")
-def actualizar_metodo(metodo_id: int, data: MetodoPagoCreate, db: Session = Depends(get_db)):
+def actualizar_metodo(metodo_id: int, data: MetodoPagoCreate, request: Request,
+                       db: Session = Depends(get_db), _=Depends(require_admin)):
     m = db.query(MetodoPago).filter(MetodoPago.id == metodo_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Método no encontrado")
     for k, v in data.model_dump().items():
         setattr(m, k, v)
+    log_audit(db, request, "editar_metodo_pago", "metodo_pago", metodo_id, f"Método editado: {m.nombre}")
     db.commit()
     db.refresh(m)
     return m
 
 
 @router.delete("/api/metodos-pago/{metodo_id}")
-def desactivar_metodo(metodo_id: int, db: Session = Depends(get_db)):
+def desactivar_metodo(metodo_id: int, request: Request,
+                       db: Session = Depends(get_db), _=Depends(require_admin)):
     m = db.query(MetodoPago).filter(MetodoPago.id == metodo_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Método no encontrado")
     # No eliminar si tiene pagos asociados; sólo desactivar
     if db.query(Pago).filter(Pago.metodo_pago_id == metodo_id).count() > 0:
         m.activo = False
+        log_audit(db, request, "desactivar_metodo_pago", "metodo_pago", metodo_id, f"Método desactivado: {m.nombre}")
         db.commit()
         return {"ok": True, "accion": "desactivado"}
+    log_audit(db, request, "eliminar_metodo_pago", "metodo_pago", metodo_id, f"Método eliminado: {m.nombre}")
     db.delete(m)
     db.commit()
     return {"ok": True, "accion": "eliminado"}
@@ -133,7 +139,7 @@ def listar_pagos_contrato(contrato_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/api/pagos", status_code=201)
-def registrar_pago(data: PagoCreate, db: Session = Depends(get_db)):
+def registrar_pago(data: PagoCreate, request: Request, db: Session = Depends(get_db)):
     c = db.query(Contrato).filter(Contrato.id == data.contrato_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Contrato no encontrado")
@@ -169,6 +175,8 @@ def registrar_pago(data: PagoCreate, db: Session = Depends(get_db)):
     db.flush()
 
     _actualizar_estado_pago(c, db)
+    log_audit(db, request, "registrar_pago", "pago", pago.id,
+              f"Pago {folio} de ${data.monto:.2f} para contrato {c.folio}")
     db.commit()
     db.refresh(pago)
     return {
