@@ -38,6 +38,7 @@ def _cliente_dict(c: Cliente) -> dict:
         "email": c.email,
         "lista_negra": bool(c.lista_negra),
         "motivo_lista_negra": c.motivo_lista_negra,
+        "descuento_autorizado": bool(c.descuento_autorizado),
         "created_at": str(c.created_at)[:10] if c.created_at else None,
         "referencias": [
             {"id": r.id, "nombre": r.nombre, "telefono": r.telefono, "direccion": r.direccion}
@@ -48,6 +49,7 @@ def _cliente_dict(c: Cliente) -> dict:
 
 @router.get("")
 def listar_clientes(q: Optional[str] = None, lista_negra: Optional[bool] = None,
+                    descuento_autorizado: Optional[bool] = None,
                     page: int = 1, limit: int = 100, db: Session = Depends(get_db)):
     query = db.query(Cliente)
     if q:
@@ -56,6 +58,8 @@ def listar_clientes(q: Optional[str] = None, lista_negra: Optional[bool] = None,
         query = query.filter(Cliente.lista_negra == True)
     elif lista_negra is False:
         query = query.filter((Cliente.lista_negra == False) | (Cliente.lista_negra == None))
+    if descuento_autorizado is True:
+        query = query.filter(Cliente.descuento_autorizado == True)
     total = query.count()
     offset = (page - 1) * limit
     clientes = query.order_by(Cliente.nombre).offset(offset).limit(limit).all()
@@ -194,5 +198,25 @@ def quitar_lista_negra(cliente_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     cliente.lista_negra = False
     cliente.motivo_lista_negra = None
+    db.commit()
+    return _cliente_dict(cliente)
+
+
+@router.post("/{cliente_id}/descuento-autorizado")
+def autorizar_descuento(cliente_id: int, db: Session = Depends(get_db)):
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    cliente.descuento_autorizado = True
+    db.commit()
+    return _cliente_dict(cliente)
+
+
+@router.delete("/{cliente_id}/descuento-autorizado")
+def quitar_autorizacion_descuento(cliente_id: int, db: Session = Depends(get_db)):
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    cliente.descuento_autorizado = False
     db.commit()
     return _cliente_dict(cliente)

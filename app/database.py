@@ -67,6 +67,7 @@ class Cliente(Base):
     email = Column(String(100))
     lista_negra = Column(Boolean, default=False)
     motivo_lista_negra = Column(Text, nullable=True)
+    descuento_autorizado = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     referencias = relationship("ReferenciaCliente", back_populates="cliente", cascade="all, delete-orphan")
@@ -539,6 +540,8 @@ def _migrar_columnas_nuevas():
                 conn.execute(text("ALTER TABLE clientes ADD COLUMN lista_negra BOOLEAN DEFAULT FALSE"))
             if "motivo_lista_negra" not in cols_cli:
                 conn.execute(text("ALTER TABLE clientes ADD COLUMN motivo_lista_negra TEXT"))
+            if "descuento_autorizado" not in cols_cli:
+                conn.execute(text("ALTER TABLE clientes ADD COLUMN descuento_autorizado BOOLEAN DEFAULT FALSE"))
             conn.commit()
 
     if "gastos" in inspector.get_table_names():

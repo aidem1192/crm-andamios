@@ -50,6 +50,9 @@
         <button @click="filtroLN = true; buscar()"
                 :class="filtroLN === true ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'"
                 class="px-3 py-2 rounded-lg text-sm font-medium transition">⛔ Lista negra</button>
+        <button @click="filtroDesc = !filtroDesc; buscar()"
+                :class="filtroDesc ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'"
+                class="px-3 py-2 rounded-lg text-sm font-medium transition">% Con descuento</button>
       </div>
     </div>
     <div x-show="clientes.length === 0" class="text-gray-400 text-center py-8">No hay clientes registrados.</div>
@@ -62,6 +65,8 @@
               <span class="font-semibold text-sm" x-text="c.nombre"></span>
               <span x-show="c.lista_negra"
                     class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white">⛔ LISTA NEGRA</span>
+              <span x-show="c.descuento_autorizado"
+                    class="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">% AUTORIZADO DESCUENTO</span>
             </div>
             <div class="text-xs text-gray-400 truncate" x-text="[c.telefono, c.domicilio].filter(Boolean).join(' · ')"></div>
             <div x-show="c.lista_negra && c.motivo_lista_negra"
@@ -78,6 +83,10 @@
                     class="text-xs text-red-500 hover:underline font-medium">⛔ Lista negra</button>
             <button x-show="c.lista_negra" @click="quitarListaNegra(c)"
                     class="text-xs text-green-600 hover:underline font-medium">✓ Quitar</button>
+            <button x-show="!c.descuento_autorizado" @click="autorizarDescuento(c)"
+                    class="text-xs text-green-600 hover:underline font-medium">% Autorizar descuento</button>
+            <button x-show="c.descuento_autorizado" @click="quitarAutorizacionDescuento(c)"
+                    class="text-xs text-gray-400 hover:underline font-medium">Quitar autorización</button>
           </div>
         </div>
       </template>
@@ -271,7 +280,7 @@
 function clientesPage() {
   return {
     clientes: [], total: 0, page: 1, limit: 100,
-    q: '', filtroLN: null, modalAbierto: false, editandoId: null, error: '',
+    q: '', filtroLN: null, filtroDesc: false, modalAbierto: false, editandoId: null, error: '',
     importResult: null,
     form: { nombre: '', telefono: '', domicilio: '', rfc: '', referencias: [] },
     modalLN: { abierto: false, id: null, nombre: '', motivo: '', error: '', guardando: false },
@@ -302,6 +311,7 @@ function clientesPage() {
       const params = new URLSearchParams({ q: this.q, page: this.page, limit: this.limit });
       if (this.filtroLN === true)  params.set('lista_negra', 'true');
       if (this.filtroLN === false) params.set('lista_negra', 'false');
+      if (this.filtroDesc) params.set('descuento_autorizado', 'true');
       const data = await fetch('/api/clientes?' + params).then(r => r.json());
       this.clientes = data.clientes || [];
       this.total = data.total || 0;
@@ -364,6 +374,17 @@ function clientesPage() {
     async quitarListaNegra(c) {
       if (!confirm('¿Quitar a ' + c.nombre + ' de la lista negra?')) return;
       await fetch('/api/clientes/' + c.id + '/lista-negra', { method: 'DELETE' });
+      await this.buscar();
+    },
+
+    async autorizarDescuento(c) {
+      await fetch('/api/clientes/' + c.id + '/descuento-autorizado', { method: 'POST' });
+      await this.buscar();
+    },
+
+    async quitarAutorizacionDescuento(c) {
+      if (!confirm('¿Quitar la autorización de descuento a ' + c.nombre + '?')) return;
+      await fetch('/api/clientes/' + c.id + '/descuento-autorizado', { method: 'DELETE' });
       await this.buscar();
     },
 

@@ -161,11 +161,6 @@ def estado_material(contrato_id: int, db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
-    # Validar descuento
-    if data.descuento_pct > 0:
-        if data.pin_descuento != PIN_DESCUENTO:
-            raise HTTPException(status_code=403, detail="PIN de descuento incorrecto. Se requiere autorización del gerente.")
-
     # Validar cliente
     cliente = db.query(Cliente).filter(Cliente.id == data.cliente_id).first()
     if not cliente:
@@ -173,6 +168,14 @@ def crear_contrato(data: ContratoCreate, db: Session = Depends(get_db)):
     if cliente.lista_negra:
         motivo = f" Motivo: {cliente.motivo_lista_negra}" if cliente.motivo_lista_negra else ""
         raise HTTPException(status_code=403, detail=f"Este cliente está en la lista negra y no puede rentar material.{motivo}")
+
+    # Validar descuento: el cliente debe estar autorizado Y requiere el PIN del gerente
+    if data.descuento_pct > 0:
+        if not cliente.descuento_autorizado:
+            raise HTTPException(status_code=403,
+                                detail="Este cliente no está autorizado para descuento. Actívalo desde Clientes si corresponde.")
+        if data.pin_descuento != PIN_DESCUENTO:
+            raise HTTPException(status_code=403, detail="PIN de descuento incorrecto. Se requiere autorización del gerente.")
 
     # Validar fechas (la hora de entrega puede recorrer el día de inicio al siguiente — ver fecha_inicio_efectiva)
     fecha_inicio = fecha_inicio_efectiva(data.fecha_inicio, data.hora_entrega)
