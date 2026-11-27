@@ -474,6 +474,39 @@ class LineaNotaCargo(Base):
     material = relationship("Material")
 
 
+class CompraMaterial(Base):
+    """Compra de material de renta al proveedor. Genera un Gasto (pago único) y
+    lleva control de recepción por línea (puede llegar incompleta/parcial)."""
+    __tablename__ = "compras_material"
+    id = Column(Integer, primary_key=True, index=True)
+    folio = Column(String(20), unique=True)
+    proveedor = Column(String(200))
+    proveedor_telefono = Column(String(30))
+    fecha = Column(Date, nullable=False)
+    notas = Column(Text)
+    total = Column(Float, default=0.0)
+    estado_recepcion = Column(String(20), default="pendiente")  # pendiente | parcial | completo
+    gasto_id = Column(Integer, ForeignKey("gastos.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    lineas = relationship("LineaCompraMaterial", back_populates="compra", cascade="all, delete-orphan")
+    gasto = relationship("Gasto")
+
+
+class LineaCompraMaterial(Base):
+    __tablename__ = "lineas_compra_material"
+    id = Column(Integer, primary_key=True, index=True)
+    compra_id = Column(Integer, ForeignKey("compras_material.id"), nullable=False)
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=False)
+    cantidad_comprada = Column(Integer, nullable=False)
+    precio_unitario = Column(Float, nullable=False)
+    total_linea = Column(Float, nullable=False)
+    cantidad_recibida = Column(Integer, default=0)
+
+    compra = relationship("CompraMaterial", back_populates="lineas")
+    material = relationship("Material")
+
+
 def get_db():
     db = SessionLocal()
     try:

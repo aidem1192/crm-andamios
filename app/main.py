@@ -15,6 +15,7 @@ from app.routers import agenda as agenda_router
 from app.routers import cotizaciones as cotizaciones_router
 from app.routers import gastos as gastos_router
 from app.routers import documentos as documentos_router
+from app.routers import compras_material as compras_material_router
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -64,6 +65,7 @@ app.include_router(notas_cargo_router.router)
 app.include_router(cotizaciones_router.router)
 app.include_router(gastos_router.router)
 app.include_router(documentos_router.router)
+app.include_router(compras_material_router.router)
 
 
 @app.on_event("startup")
@@ -274,6 +276,14 @@ def page_gastos(request: Request):
     if redir:
         return redir
     return templates.TemplateResponse(request=request, name="gastos.html", context=_ctx(request))
+
+
+@app.get("/compras-material")
+def page_compras_material(request: Request):
+    redir = _require_login(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request=request, name="compras_material.html", context=_ctx(request))
 
 
 @app.get("/cotizaciones")

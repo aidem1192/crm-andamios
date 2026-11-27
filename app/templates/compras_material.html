@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block title %}Compra de Material{% endblock %}
+{% block content %}
+<div x-data="comprasApp()" x-init="init()">
+
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Compra de Material</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Compras a proveedor, control de pago y recepción de material</p>
+    </div>
+    <button @click="abrirModalNueva()" class="btn-primary">+ Nueva Compra</button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="card mb-5 flex flex-wrap gap-3 items-center">
+    <input x-model="filtro" @input="filtrar()" placeholder="Buscar folio o proveedor…" class="input max-w-xs" />
+    <select x-model="filtroEstado" @change="filtrar()" class="input max-w-xs">
+      <option value="">Todos los estados</option>
+      <option value="pendiente">Pendiente de recibir</option>
+      <option value="parcial">Recepción parcial</option>
+      <option value="completo">Completo</option>
+    </select>
+  </div>
+
+  <!-- Resumen -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-orange-600"
+         x-text="'$' + lista.reduce((s,c)=>s+c.total,0).toLocaleString('es-MX',{minimumFractionDigits:2})"></p>
+      <p class="text-xs text-gray-500 mt-1">Total comprado</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-gray-700" x-text="lista.length"></p>
+      <p class="text-xs text-gray-500 mt-1">Compras</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-yellow-600" x-text="lista.filter(c=>c.estado_recepcion==='pendiente').length"></p>
+      <p class="text-xs text-gray-500 mt-1">Pendientes de recibir</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-blue-600" x-text="lista.filter(c=>c.estado_recepcion==='parcial').length"></p>
+      <p class="text-xs text-gray-500 mt-1">Recepción parcial</p>
+    </div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="card overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="text-left text-gray-500 border-b border-gray-200 text-xs uppercase tracking-wide">
+          <th class="pb-3 pr-4">Folio</th>
+          <th class="pb-3 pr-4">Fecha</th>
+          <th class="pb-3 pr-4">Proveedor</th>
+          <th class="pb-3 pr-4">Artículos</th>
+          <th class="pb-3 pr-4 text-right">Total</th>
+          <th class="pb-3 pr-4">Recepción</th>
+          <th class="pb-3 w-8"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-if="cargando">
+          <tr><td colspan="7" class="py-10 text-center text-gray-400">Cargando…</td></tr>
+        </template>
+        <template x-if="!cargando && lista.length === 0">
+          <tr><td colspan="7" class="py-10 text-center text-gray-400">No hay compras registradas.</td></tr>
+        </template>
+        <template x-for="c in lista" :key="c.id">
+          <tr class="border-b border-gray-50 hover:bg-orange-50 transition cursor-pointer" @click="abrirDetalle(c)">
+            <td class="py-3 pr-4 font-medium text-gray-800" x-text="c.folio"></td>
+            <td class="py-3 pr-4 text-gray-600" x-text="c.fecha"></td>
+            <td class="py-3 pr-4 text-gray-600" x-text="c.proveedor || '—'"></td>
+            <td class="py-3 pr-4 text-gray-500" x-text="c.lineas.length + ' artículo(s)'"></td>
+            <td class="py-3 pr-4 text-right font-semibold text-orange-600"
+                x-text="'$' + Number(c.total).toLocaleString('es-MX',{minimumFractionDigits:2})"></td>
+            <td class="py-3 pr-4">
+              <span :class="estadoBadge(c.estado_recepcion)" x-text="estadoLabel(c.estado_recepcion)"></span>
+            </td>
+            <td class="py-3">
+              <button @click.stop="confirmarEliminar(c)"
+                      class="text-gray-300 hover:text-red-500 transition text-lg leading-none">🗑</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ MODAL NUEVA COMPRA ═══════════════════════════════════════════════ -->
+  <div x-show="modal.abierto" x-cloak
+       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+
+      <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+        <h2 class="text-lg font-bold text-gray-800">Nueva Compra de Material</h2>
+        <button @click="modal.abierto=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+
+      <form @submit.prevent="guardar()" class="px-6 py-5 space-y-4">
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="label">Fecha *</label>
+            <input type="date" x-model="modal.fecha" required class="input" />
+          </div>
+          <div>
+            <label class="label">Método de pago *</label>
+            <select x-model="modal.metodo_pago" class="input">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="cheque">Cheque</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="label">Proveedor</label>
+            <input type="text" x-model="modal.proveedor" class="input" placeholder="Nombre del proveedor" />
+          </div>
+          <div>
+            <label class="label">Teléfono proveedor</label>
+            <input type="text" x-model="modal.proveedor_telefono" class="input" placeholder="Opcional" />
+          </div>
+        </div>
+
+        <!-- Líneas -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="label mb-0">Artículos comprados *</label>
+            <button type="button" @click="agregarLinea()" class="text-sm text-orange-600 hover:text-orange-700 font-medium">+ Agregar artículo</button>
+          </div>
+          <div class="space-y-2">
+            <template x-for="(l, idx) in modal.lineas" :key="idx">
+              <div class="flex gap-2 items-start bg-gray-50 rounded-xl p-3">
+                <select x-model.number="l.material_id" class="input flex-1" required>
+                  <option value="">Selecciona material…</option>
+                  <template x-for="m in materiales" :key="m.id">
+                    <option :value="m.id" x-text="m.nombre"></option>
+                  </template>
+                </select>
+                <input type="number" x-model.number="l.cantidad_comprada" min="1" step="1" required
+                       class="input w-20" placeholder="Cant." />
+                <div class="relative w-28">
+                  <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input type="number" x-model.number="l.precio_unitario" min="0" step="0.01" required
+                         class="input pl-5" placeholder="Precio" />
+                </div>
+                <button type="button" @click="modal.lineas.splice(idx,1)"
+                        class="text-gray-300 hover:text-red-500 text-lg leading-none mt-2">🗑</button>
+              </div>
+            </template>
+          </div>
+          <p class="text-right text-sm text-gray-600 mt-2">
+            Total: <span class="font-bold text-orange-600" x-text="'$' + totalModal().toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
+          </p>
+        </div>
+
+        <div>
+          <label class="label">Notas (opcional)</label>
+          <input type="text" x-model="modal.notas" class="input" placeholder="Observaciones adicionales…" />
+        </div>
+
+        <p x-show="modal.error" x-text="modal.error"
+           class="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2"></p>
+
+        <div class="flex gap-3 pt-1">
+          <button type="button" @click="modal.abierto=false" class="btn-secondary flex-1">Cancelar</button>
+          <button type="submit" :disabled="modal.guardando" class="btn-primary flex-1">
+            <span x-show="!modal.guardando">Guardar Compra</span>
+            <span x-show="modal.guardando">Guardando…</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══ MODAL DETALLE / RECEPCIÓN ════════════════════════════════════════ -->
+  <div x-show="detalle.abierto" x-cloak
+       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" x-show="detalle.compra">
+      <template x-if="detalle.compra">
+        <div>
+          <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+            <div>
+              <h2 class="text-lg font-bold text-gray-800" x-text="detalle.compra.folio"></h2>
+              <p class="text-xs text-gray-500" x-text="detalle.compra.fecha + ' · ' + (detalle.compra.proveedor || 'Sin proveedor')"></p>
+            </div>
+            <button @click="detalle.abierto=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+          </div>
+
+          <div class="px-6 py-5 space-y-3">
+            <p class="text-sm">
+              Estado de recepción:
+              <span :class="estadoBadge(detalle.compra.estado_recepcion)" x-text="estadoLabel(detalle.compra.estado_recepcion)"></span>
+            </p>
+
+            <div class="divide-y divide-gray-100">
+              <template x-for="l in detalle.compra.lineas" :key="l.id">
+                <div class="py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p class="font-medium text-gray-800" x-text="l.material_nombre"></p>
+                    <p class="text-xs text-gray-500">
+                      Comprado: <span x-text="l.cantidad_comprada"></span> ·
+                      $<span x-text="Number(l.precio_unitario).toLocaleString('es-MX',{minimumFractionDigits:2})"></span> c/u ·
+                      Total: $<span x-text="Number(l.total_linea).toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input type="number" :min="0" :max="l.cantidad_comprada" step="1"
+                           x-model.number="l._recibida" class="input w-20" />
+                    <button @click="guardarRecepcion(l)" class="btn-secondary text-xs px-3 py-1.5">Guardar</button>
+                    <button @click="l._recibida = l.cantidad_comprada; guardarRecepcion(l)"
+                            class="text-xs text-green-600 hover:text-green-700 font-medium whitespace-nowrap">✓ Completo</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <p class="text-right font-semibold text-gray-700">
+              Total compra: $<span x-text="Number(detalle.compra.total).toLocaleString('es-MX',{minimumFractionDigits:2})"></span>
+            </p>
+            <p x-show="detalle.compra.notas" class="text-sm text-gray-500" x-text="'Notas: ' + detalle.compra.notas"></p>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Modal eliminar -->
+  <div x-show="modalEliminar.abierto" x-cloak
+       class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
+      <h3 class="font-bold text-gray-800 mb-1">¿Eliminar compra?</h3>
+      <p class="text-sm text-gray-500 mb-4" x-text="modalEliminar.folio"></p>
+      <p x-show="modalEliminar.error" x-text="modalEliminar.error" class="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2 mb-3"></p>
+      <div class="flex gap-3 justify-end">
+        <button @click="modalEliminar.abierto=false" class="btn-secondary">Cancelar</button>
+        <button @click="eliminar()" class="btn-danger">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function comprasApp() {
+  return {
+    todos: [], lista: [], materiales: [], cargando: true,
+    filtro: '', filtroEstado: '',
+
+    modal: {
+      abierto:false, fecha: new Date().toISOString().slice(0,10),
+      proveedor:'', proveedor_telefono:'', metodo_pago:'efectivo',
+      notas:'', lineas:[], error:'', guardando:false,
+    },
+    detalle: { abierto:false, compra:null },
+    modalEliminar: { abierto:false, id:null, folio:'', error:'' },
+
+    async init() {
+      this.cargando = true;
+      const [rc, rm] = await Promise.all([fetch('/api/compras-material'), fetch('/api/materiales')]);
+      this.todos = await rc.json();
+      this.materiales = await rm.json();
+      this.filtrar();
+      this.cargando = false;
+    },
+
+    filtrar() {
+      let d = this.todos;
+      if (this.filtro.trim()) {
+        const q = this.filtro.toLowerCase();
+        d = d.filter(c => c.folio.toLowerCase().includes(q) || (c.proveedor||'').toLowerCase().includes(q));
+      }
+      if (this.filtroEstado) d = d.filter(c => c.estado_recepcion === this.filtroEstado);
+      this.lista = d;
+    },
+
+    estadoLabel(v) {
+      return { pendiente:'Pendiente', parcial:'Parcial', completo:'Completo' }[v] || v;
+    },
+    estadoBadge(v) {
+      const m = {
+        pendiente:'bg-yellow-100 text-yellow-700', parcial:'bg-blue-100 text-blue-700',
+        completo:'bg-green-100 text-green-700',
+      };
+      return (m[v]||'bg-gray-100 text-gray-500') + ' px-2 py-0.5 rounded-full text-xs font-medium';
+    },
+
+    abrirModalNueva() {
+      this.modal = {
+        abierto:true, fecha: new Date().toISOString().slice(0,10),
+        proveedor:'', proveedor_telefono:'', metodo_pago:'efectivo',
+        notas:'', lineas:[{material_id:'', cantidad_comprada:1, precio_unitario:''}],
+        error:'', guardando:false,
+      };
+    },
+
+    agregarLinea() {
+      this.modal.lineas.push({material_id:'', cantidad_comprada:1, precio_unitario:''});
+    },
+
+    totalModal() {
+      return this.modal.lineas.reduce((s,l)=> s + (Number(l.cantidad_comprada)||0) * (Number(l.precio_unitario)||0), 0);
+    },
+
+    async guardar() {
+      const lineas = this.modal.lineas.filter(l => l.material_id && l.cantidad_comprada > 0);
+      if (lineas.length === 0) { this.modal.error = 'Agrega al menos un artículo.'; return; }
+      this.modal.guardando = true; this.modal.error = '';
+      try {
+        const r = await fetch('/api/compras-material', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            fecha: this.modal.fecha, proveedor: this.modal.proveedor || null,
+            proveedor_telefono: this.modal.proveedor_telefono || null,
+            metodo_pago: this.modal.metodo_pago, notas: this.modal.notas || null,
+            lineas: lineas.map(l => ({
+              material_id: l.material_id, cantidad_comprada: l.cantidad_comprada,
+              precio_unitario: l.precio_unitario,
+            })),
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) { this.modal.error = d.detail || 'Error al guardar.'; return; }
+        this.modal.abierto = false;
+        await this.init();
+      } catch(e) {
+        this.modal.error = 'Error de conexión.';
+      } finally { this.modal.guardando = false; }
+    },
+
+    abrirDetalle(c) {
+      c.lineas.forEach(l => l._recibida = l.cantidad_recibida);
+      this.detalle = { abierto:true, compra: c };
+    },
+
+    async guardarRecepcion(linea) {
+      const r = await fetch(`/api/compras-material/${this.detalle.compra.id}/lineas/${linea.id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ cantidad_recibida: linea._recibida }),
+      });
+      const d = await r.json();
+      if (!r.ok) { alert(d.detail || 'Error al actualizar recepción.'); return; }
+      d.lineas.forEach(l => l._recibida = l.cantidad_recibida);
+      this.detalle.compra = d;
+      const i = this.todos.findIndex(c => c.id === d.id);
+      if (i >= 0) this.todos[i] = d;
+      this.filtrar();
+    },
+
+    confirmarEliminar(c) {
+      this.modalEliminar = { abierto:true, id:c.id, folio:c.folio, error:'' };
+    },
+
+    async eliminar() {
+      const r = await fetch('/api/compras-material/'+this.modalEliminar.id, { method:'DELETE' });
+      if (!r.ok) {
+        const d = await r.json();
+        this.modalEliminar.error = d.detail || 'Error al eliminar.';
+        return;
+      }
+      this.modalEliminar.abierto = false;
+      await this.init();
+    },
+  };
+}
+</script>
+{% endblock %}
