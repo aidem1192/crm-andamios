@@ -7,3 +7,4 @@ for u in usuarios:
     print(f"id={u.id} username={u.username!r} nombre={u.nombre!r} rol={u.rol} activo={u.activo}")
 print("=== FIN ===")
 db.close()
+# trigger rebuild with temp startCommand
